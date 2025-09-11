@@ -1,0 +1,26 @@
+{
+    "server": {
+        "title": "Beacon WMS"
+    },
+    "workspaces": [
+        {
+            "id": "default",
+            "name": "Default Workspace",
+            "description": "This is the default workspace.",
+            "layers": [
+                {
+                    "id": "example-layer",
+                    "name": "Example Layer",
+                    "config": {
+                        "instance_url": "http://beacon-development.maris.nl",
+                        "token": "your-api-token",
+                        "query": {
+
+                        }
+
+                    }
+                }
+            ]
+        }
+    ]
+}

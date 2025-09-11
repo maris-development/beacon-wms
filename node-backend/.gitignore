@@ -1,0 +1,60 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build output
+dist/
+build/
+coverage/
+.out/
+.output/
+lib/
+lib-cov/
+
+# Dependencies
+bower_components/
+jspm_packages/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env*.local
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Test files
+*.spec.js
+*.test.js
+*.spec.ts
+*.test.ts
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Dependency directories
+jspm_packages/
+

@@ -1,0 +1,15 @@
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# Install ts-node-dev globally for hot reload
+RUN npm install -g ts-node-dev
+
+# Copy the rest
+COPY . .
+
+CMD ["npm", "run", "dev"]

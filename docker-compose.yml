@@ -1,0 +1,28 @@
+version: "3.9"
+services:
+  rust-backend:
+    build:
+      context: ./rust-backend
+    container_name: rust-backend
+    expose:
+      - "8080"
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+
+  node-backend:
+    build:
+      context: ./node-backend
+      dockerfile: Dockerfile.dev
+    container_name: node-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - RUST_BACKEND_URL=http://rust-backend:8080
+    volumes:
+      - ./node-backend:/app
+      - /app/node_modules   # prevent overwriting node_modules
+    depends_on:
+      - rust-backend
+    restart: unless-stopped
