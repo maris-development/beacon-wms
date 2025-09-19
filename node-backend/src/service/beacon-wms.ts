@@ -9,7 +9,15 @@ import { WMSGetFeatureInfoParameters, WMSGetMapParameters } from "../types/ogc-w
 
 export class BeaconWmsService {
     private wmsXml: WmsXmlService;
+    private beaconWmsBaseUrl = 'http://localhost:8000'; // Rust service base URL
     private allowedOgcVersions = ['1.1.1', '1.3.0'];
+
+    public static CORS_HEADERS = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Max-Age": "86400" // Cache preflight response for 24 hours
+    };
 
     constructor(
         private readonly config: Config
@@ -28,10 +36,10 @@ export class BeaconWmsService {
 
         const queryParameters = Utils.lowerCaseKeys(req.query);
 
-        const ogcVersion = queryParameters['version'];
+        const ogcVersion = queryParameters['version'] ?? '1.3.0';
 
         if (!ogcVersion || !this.allowedOgcVersions.includes(ogcVersion.toString())) {
-            this.wmsXml.error(res, "InvalidParameterValue", `The 'version' parameter is required and must be one of: ${this.allowedOgcVersions.join(", ")}`);
+            this.wmsXml.error(res, "InvalidParameterValue", `The 'version' parameter is required and must be one of: ${this.allowedOgcVersions.join(", ")}, is: '${ogcVersion}'`);
             return;
         }
 
@@ -66,11 +74,34 @@ export class BeaconWmsService {
     }
 
     private async handleGetCapabilities(req: Request, res: Response, workspace: WorkspaceConfig, queryParameters: Record<string, any>) {
-        this.wmsXml.getCapabilities(req, res, workspace, queryParameters['version']);
+        const url = new URL("/available-styles", this.beaconWmsBaseUrl);
+
+        const availableStyles: string[] = await fetch(url)
+            .then(r => {
+                if (r.ok) {
+                    return r.json();
+                }
+                return Promise.reject(r);
+            })
+            .catch(response => {
+                try{
+                    response.text().then((text: string) => console.error(text));
+                } catch(_){
+                    console.error(response);
+                }
+                return [];
+            });
+
+        if(!availableStyles){
+            this.wmsXml.error(res, "ServerError", `Error fetching styles from Rust service`);
+            return;
+        }
+
+        this.wmsXml.getCapabilities(req, res, workspace, availableStyles, queryParameters['version']);
     }
 
     private handleGetMap(req: Request, res: Response, workspace: WorkspaceConfig, queryParameters: Record<string, any>) {
-
+        //example uRL: http://localhost:3000/workspaces/default/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=example-layer&STYLES=&CRS=EPSG:4326&BBOX=-4.5,50.0,9.5,62.0&WIDTH=800&HEIGHT=600&FORMAT=image/png
         //gather all getMap parameters here from queryParameters (lc keys)
 
         const wmsGetMapParams: WMSGetMapParameters = {
@@ -88,7 +119,7 @@ export class BeaconWmsService {
 
             //OPTIONAL:
             transparent: queryParameters['transparent'], //true/false, not implemented in rust
-            bgcolor: queryParameters['bgcolor'], // not implemented in rust
+            // bgcolor: queryParameters['bgcolor'], // not implemented in rust
             exceptions: queryParameters['exceptions'], // XML or JSON
             time: queryParameters['time'], // optional, not implemented yet
             elevation: queryParameters['elevation'],  //optional, not implemented yet
@@ -130,19 +161,69 @@ export class BeaconWmsService {
             return;
         }
 
-        const layers =  wmsGetMapParams.layers.split(',').map(l => l.trim()).filter(l => l.length > 0);
+        const layers = wmsGetMapParams.layers.split(',').map(l => l.trim()).filter(l => l.length > 0);
 
-        for(let i = 0; i < layers.length; i++) {
+        for (let i = 0; i < layers.length; i++) {
             const layerId = layers[i];
             const layer = workspace.layers.find(l => l.id === layerId);
             if (!layer) {
                 this.wmsXml.error(res, "InvalidParameterValue", `Layer '${layerId}' not found in workspace '${workspace.id}'`);
                 return;
-            }   
+            }
         }
 
-        //placeholder:
-        res.send('GetMap request received. Parameters: ' + JSON.stringify(wmsGetMapParams));
+
+        const url = new URL("/get-map", this.beaconWmsBaseUrl);
+
+        url.searchParams.append("workspace", workspace.id);
+        url.searchParams.append("version", wmsGetMapParams.version ?? '1.3.0');
+        url.searchParams.append("layers", wmsGetMapParams.layers);
+        url.searchParams.append("crs", wmsGetMapParams.crs);
+        url.searchParams.append("bbox", wmsGetMapParams.bbox);
+        url.searchParams.append("width", wmsGetMapParams.width.toString());
+        url.searchParams.append("height", wmsGetMapParams.height.toString());
+        url.searchParams.append("format", wmsGetMapParams.format);
+
+        if (wmsGetMapParams.styles) url.searchParams.append("styles", wmsGetMapParams.styles);
+        // if (wmsGetMapParams.transparent) url.searchParams.append("transparent", wmsGetMapParams.transparent);
+        // if (wmsGetMapParams.exceptions) url.searchParams.append("exceptions", wmsGetMapParams.exceptions);
+        if (wmsGetMapParams.time) url.searchParams.append("time", wmsGetMapParams.time);
+        if (wmsGetMapParams.elevation) url.searchParams.append("elevation", wmsGetMapParams.elevation);
+
+        
+        fetch(url)
+            .then(r => {
+                if (r.ok) {
+                    return r.arrayBuffer().then(buf => ({ buf, headers: r.headers }));
+                }
+                return Promise.reject(r);
+            })
+            .then(({ buf, headers }) => {
+                const nodeBuf = Buffer.from(buf);
+                const contentType = headers.get("Content-Type") || "image/png";
+                const contentLength = headers.get("Content-Length") || nodeBuf.length.toString();
+                const urlHash = Utils.hashCode(url.toString());
+
+                res.writeHead(200, {
+                    "Content-Disposition": `inline; filename="map_${urlHash}.png"`,
+                    "Content-Type": contentType,
+                    "Content-Length": contentLength,
+                    ...BeaconWmsService.CORS_HEADERS
+                });
+                            
+                res.end(nodeBuf);
+            })
+            .catch(response => {
+                try{
+                    response.text().then((text: string) => console.error(text));
+                } catch(_){
+                    console.error(response);
+                }
+                this.wmsXml.error(res, "ServerError", `Error fetching map from Rust service: ${response.statusText || response}`);
+            });
+
+
+
     }
 
     private handleGetFeatureInfo(
@@ -151,6 +232,8 @@ export class BeaconWmsService {
         workspace: WorkspaceConfig,
         queryParameters: Record<string, any>
     ) {
+        //example url: http://10.0.0.33:3000/workspaces/default/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&FORMAT=image%2Fpng&TRANSPARENT=true&QUERY_LAYERS=example-layer&LAYERS=example-layer&INFO_FORMAT=text%2Fhtml&FEATURE_COUNT=20&I=232&J=231&WIDTH=256&HEIGHT=256&CRS=EPSG%3A3857&STYLES=&BBOX=-1721973.373208452%2C6261721.357121639%2C-1565430.3392804111%2C6418264.39104968
+
         const wmsGetFeatureInfoParams: WMSGetFeatureInfoParameters = {
             service: queryParameters['service'],
             request: queryParameters['request'],
@@ -201,23 +284,76 @@ export class BeaconWmsService {
             return;
         }
 
-        const layers =  wmsGetFeatureInfoParams.layers.split(',').map(l => l.trim()).filter(l => l.length > 0);
-        const queryLayers =  wmsGetFeatureInfoParams.query_layers.split(',').map(l => l.trim()).filter(l => l.length > 0);
+        const layers = wmsGetFeatureInfoParams.layers.split(',').map(l => l.trim()).filter(l => l.length > 0);
+        const queryLayers = wmsGetFeatureInfoParams.query_layers.split(',').map(l => l.trim()).filter(l => l.length > 0);
         const allLayers = [...new Set([...layers, ...queryLayers])];
 
-        for(let i = 0; i < allLayers.length; i++) {
+        for (let i = 0; i < allLayers.length; i++) {
             const layerId = allLayers[i];
             const layer = workspace.layers.find(l => l.id === layerId);
             if (!layer) {
                 this.wmsXml.error(res, "InvalidParameterValue", `Layer '${layerId}' not found in workspace '${workspace.id}'`);
                 return;
-            }   
+            }
         }
 
-    
+
+        
+        const url = new URL("/get-feature-info", this.beaconWmsBaseUrl);
+
+        url.searchParams.append("workspace", workspace.id);
+        url.searchParams.append("version", wmsGetFeatureInfoParams.version ?? '1.3.0');
+        url.searchParams.append("layers", wmsGetFeatureInfoParams.layers);
+        url.searchParams.append("query_layers", wmsGetFeatureInfoParams.query_layers);
+        url.searchParams.append("info_format", wmsGetFeatureInfoParams.info_format);
+        url.searchParams.append("crs", wmsGetFeatureInfoParams.crs);
+        url.searchParams.append("bbox", wmsGetFeatureInfoParams.bbox);
+        url.searchParams.append("width", wmsGetFeatureInfoParams.width.toString());
+        url.searchParams.append("height", wmsGetFeatureInfoParams.height.toString());
+        url.searchParams.append("x", wmsGetFeatureInfoParams.x.toString());
+        url.searchParams.append("y", wmsGetFeatureInfoParams.y.toString());
+
+
+        if (wmsGetFeatureInfoParams.styles) url.searchParams.append("styles", wmsGetFeatureInfoParams.styles);
+        // if (wmsGetMapParams.transparent) url.searchParams.append("transparent", wmsGetMapParams.transparent);
+        // if (wmsGetMapParams.exceptions) url.searchParams.append("exceptions", wmsGetMapParams.exceptions);
+        if (wmsGetFeatureInfoParams.time) url.searchParams.append("time", wmsGetFeatureInfoParams.time);
+        if (wmsGetFeatureInfoParams.elevation) url.searchParams.append("elevation", wmsGetFeatureInfoParams.elevation);
 
         // Placeholder response
-        res.send('GetFeatureInfo request received. Parameters: ' + JSON.stringify(wmsGetFeatureInfoParams));
+        // res.send('GetFeatureInfo request received. Parameters: ' + JSON.stringify(wmsGetFeatureInfoParams));
+        // return;
+            
+        fetch(url)
+            .then(r => {
+                if (r.ok) {
+                    return r.arrayBuffer().then(buf => ({ buf, headers: r.headers }));
+                }
+                return Promise.reject(r);
+            })
+            .then(({ buf, headers }) => {
+                const nodeBuf = Buffer.from(buf);
+                const contentType = headers.get("Content-Type") || "image/png";
+                const contentLength = headers.get("Content-Length") || nodeBuf.length.toString();
+                const urlHash = Utils.hashCode(url.toString());
+
+                res.writeHead(200, {
+                    "Content-Disposition": `inline; filename="get_feature_info_${urlHash}"`,
+                    "Content-Type": contentType,
+                    "Content-Length": contentLength,
+                    ...BeaconWmsService.CORS_HEADERS
+                });
+                            
+                res.end(nodeBuf);
+            })
+            .catch(response => {
+                try{
+                    response.text().then((text: string) => console.error(text));
+                } catch(_){
+                    console.error(response);
+                }
+                this.wmsXml.error(res, "ServerError", `Error fetching feature info from Rust service: ${response.statusText || response}`);
+            });
     }
 
 }

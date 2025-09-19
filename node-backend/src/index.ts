@@ -15,6 +15,7 @@ const port = 3000;
 
 app.set("views", path.join(__dirname, "../templates"));
 app.set("view engine", "ejs");
+app.disable("x-powered-by");
 
 app.use(appMiddleware)
 app.get(routes.root.getRoute(), homepage);

@@ -1,0 +1,76 @@
+{
+    "server": {
+        "title": "Beacon WMS"
+    },
+    "workspaces": [
+        {
+            "id": "default",
+            "name": "Default Workspace",
+            "description": "This is the default workspace.",
+            "layers": [
+                {
+                    "id": "example-layer",
+                    "name": "Example Layer",
+                    "config": {
+                        "instance_url": "https://beacon-development.maris.nl",
+                        "token": "none",
+                        "query": {
+                            "from": "easy-argo-core",
+                            "query_parameters": [
+                                {
+                                    "column": "time",
+                                    "alias": null
+                                },
+                                {
+                                    "column": "longitude",
+                                    "alias": null
+                                },
+                                {
+                                    "column": "latitude",
+                                    "alias": null
+                                },
+                                {
+                                    "column": "pressure",
+                                    "alias": null
+                                },
+                                {
+                                    "column": "temperature",
+                                    "alias": null
+                                },
+                                {
+                                    "column": "salinity",
+                                    "alias": null
+                                }
+                            ],
+                            "filters": [
+                                {
+                                    "for_query_parameter": "time",
+                                    "min": "2022-12-31T22:00:00.000Z",
+                                    "max": "2023-12-31T23:59:59Z"
+                                },
+                                {
+                                    "for_query_parameter": "longitude",
+                                    "min": -180,
+                                    "max": 180
+                                },
+                                {
+                                    "for_query_parameter": "latitude",
+                                    "min": -90,
+                                    "max": 90
+                                },
+                                {
+                                    "for_query_parameter": "pressure",
+                                    "min": 0,
+                                    "max": 10
+                                }
+                            ],
+                            "output": {
+                                "format": { "geoparquet": { "longitude_column": "longitude", "latitude_column": "latitude" } }
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -13,7 +13,7 @@ export type WMSGetMapParameters = {
 
     // Optional parameters
     transparent?: string;  // "true" or "false" (not implemented in Rust)
-    bgcolor?: string;      // Background color (e.g., "0xFFFFFF")
+    // bgcolor?: string;      // Background color (e.g., "0xFFFFFF")
     exceptions?: string;   // Error format (e.g., "application/vnd.ogc.se_xml")
     time?: string;         // Time parameter (e.g., "2023-01-01")
     elevation?: string;    // Elevation parameter (optional)
@@ -25,6 +25,7 @@ export type WMSGetFeatureInfoParameters = {
     service: string;      // Must be "WMS"
     request: string;      // Must be "GetFeatureInfo"
     version: string;      // e.g., "1.3.0"
+    
     layers: string;       // Comma-separated layer names
     styles?: string;      // Comma-separated styles (optional)
     query_layers: string; // Comma-separated layer names to query (can be same as `layers`)

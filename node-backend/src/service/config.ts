@@ -3,7 +3,7 @@
 import { readFile, writeFile } from "fs/promises";
 import { ConfigFile, ServerConfig, WorkspaceConfig } from "../types/config";
 
-const CONFIG_FILE_LOCATION = "/conf/config.json"; // Docker location
+const CONFIG_FILE_LOCATION = "/../conf/config.json"; // Docker location
 
 export class Config {
     private config: ConfigFile | null = null;
