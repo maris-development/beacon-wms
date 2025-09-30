@@ -5,24 +5,30 @@ services:
       context: ./rust-backend
     container_name: rust-backend
     expose:
-      - "8080"
+      - "8000"
     environment:
-      - RUST_LOG=info
+      - HTTP_PORT=8000
+      - CONFIG_DIR=/config
+      - LAYER_DIR=/layers
+    volumes:
+      - ./config:/config:ro
+      - ./layers:/layers
     restart: unless-stopped
 
   node-backend:
     build:
       context: ./node-backend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     container_name: node-backend
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=development
-      - RUST_BACKEND_URL=http://rust-backend:8080
+      - HTTP_ADDRESS=0.0.0.0
+      - HTTP_PORT=3000
+      - RUST_BACKEND_URL=http://rust-backend:8000
+      - CONFIG_DIR=/config
     volumes:
-      - ./node-backend:/app
-      - /app/node_modules   # prevent overwriting node_modules
+      - ./config:/config
     depends_on:
       - rust-backend
     restart: unless-stopped

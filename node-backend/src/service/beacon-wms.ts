@@ -9,7 +9,7 @@ import { WMSGetFeatureInfoParameters, WMSGetMapParameters } from "../types/ogc-w
 
 export class BeaconWmsService {
     private wmsXml: WmsXmlService;
-    private beaconWmsBaseUrl = 'http://localhost:8000'; // Rust service base URL
+    private beaconWmsBaseUrl = 'http://localhost:8000'; // Default Rust service base URL
     private allowedOgcVersions = ['1.1.1', '1.3.0'];
 
     public static CORS_HEADERS = {
@@ -22,6 +22,8 @@ export class BeaconWmsService {
     constructor(
         private readonly config: Config
     ) {
+        this.beaconWmsBaseUrl = process.env.RUST_BACKEND_URL || this.beaconWmsBaseUrl;
+        console.log(`Using Rust backend URL: ${this.beaconWmsBaseUrl}`);
         this.wmsXml = new WmsXmlService(this.config);
     }
 

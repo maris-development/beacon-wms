@@ -34,8 +34,8 @@ pub mod request_profiling;
 fn main() {
     misc::configure_logger();
 
-    let address = misc::get_env_var("ADDRESS", Some("0.0.0.0"));
-    let port: u16 = misc::get_env_var("PORT", Some("8000"))
+    let address = misc::get_env_var("HTTP_ADDRESS", Some("0.0.0.0"));
+    let port: u16 = misc::get_env_var("HTTP_PORT", Some("8000"))
         .parse()
         .expect("Invalid port number (must be u16)");
     let workers: usize = misc::get_env_var("WORKERS", Some("24"))

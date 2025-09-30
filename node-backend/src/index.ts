@@ -1,7 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import { Config } from "./service/config";
 import { routes } from "./service/routes";
-import { Utils } from "./service/utils";
 import path from "path";
 import { BeaconWmsService } from "./service/beacon-wms";
 
@@ -10,29 +9,23 @@ const wmsService: BeaconWmsService = new BeaconWmsService(config);
 
 config.load(); // async Load config at startup
 
-const app = express();
-const port = 3000;
+const http_address = process.env.HTTP_ADDRESS || "0.0.0.0";
+const http_port: number = parseInt(process.env.HTTP_PORT || '3000');
+const template_dir = process.env.TEMPLATE_DIR || path.join(__dirname, "../templates");
 
-app.set("views", path.join(__dirname, "../templates"));
+const app = express();
+app.set("views", template_dir);
 app.set("view engine", "ejs");
 app.disable("x-powered-by");
-
 app.use(appMiddleware)
 app.get(routes.root.getRoute(), homepage);
 app.get(routes.defaultWms.getRoute(), defaultWms);
 app.get(routes.workspaceWms.getRoute(), workspaceWms);
-app.listen(port, () => {
-  console.log(`Node backend listening at http://localhost:${port}`);
+app.listen(http_port, http_address, () => {
+  console.log(`Node backend listening at http://${http_address}:${http_port}`);
+  console.log(`Template dir: ${template_dir}`);
 });
 
-
-// Example proxy route to Rust backend
-// app.get("/map", async (req, res) => {
-//   const rustBackend = process.env.RUST_BACKEND_URL || "http://localhost:8080";
-//   const response = await fetch(`${rustBackend}/`);
-//   const text = await response.text();
-//   res.send(`Rust says: ${text}`);
-// });
 
 
 

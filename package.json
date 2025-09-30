@@ -1,0 +1,10 @@
+{
+  "name": "dev-runner",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n rust,node -c green,blue \"cd rust-backend && cargo run --release\" \"cd node-backend && npm run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

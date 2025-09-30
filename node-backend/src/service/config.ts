@@ -3,7 +3,8 @@
 import { readFile, writeFile } from "fs/promises";
 import { ConfigFile, ServerConfig, WorkspaceConfig } from "../types/config";
 
-const CONFIG_FILE_LOCATION = "/../conf/config.json"; // Docker location
+const CONFIG_DIR = process.env.CONFIG_DIR || "../config"; // Docker config dir
+const CONFIG_FILE_LOCATION = `${CONFIG_DIR}/config.json`; // Config file location
 
 export class Config {
     private config: ConfigFile | null = null;
@@ -15,9 +16,8 @@ export class Config {
         let data = "{}";
         
         try {
-            const configLocation = process.env.CONFIG_FILE_LOCATION || (process.cwd() + CONFIG_FILE_LOCATION);
 
-            data = await readFile(configLocation, "utf-8");
+            data = await readFile(CONFIG_FILE_LOCATION, "utf-8");
 
             // console.log("Loaded config file from " + configLocation, data);
 
@@ -35,9 +35,8 @@ export class Config {
             throw new Error("Config not loaded");
         }
 
-        const configLocation = process.env.CONFIG_FILE_LOCATION || (process.cwd() + CONFIG_FILE_LOCATION);
 
-        await writeFile(configLocation, JSON.stringify(this.config, null, 2), "utf-8");
+        await writeFile(CONFIG_FILE_LOCATION, JSON.stringify(this.config, null, 2), "utf-8");
     }
 
     private async ensureLoaded() {

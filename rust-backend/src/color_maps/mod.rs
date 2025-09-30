@@ -47,10 +47,9 @@ impl ColorMapsConfig {
     }
 
     pub fn load() -> Option<ColorMapsConfig> {
-        let color_maps_config_path = misc::get_env_var(
-            "COLOR_MAPS_CONFIG_LOCATION",
-            Some("E:/repositories/beacon-wms-docker/conf/colormaps.json"),
-        );
+        let config_dir = misc::get_env_var("CONFIG_DIR", Some("../config"));
+
+        let color_maps_config_path = format!("{}/colormaps.json", config_dir);
 
         if color_maps_config_path.is_empty() {
             log::error!("COLOR_MAPS_CONFIG_LOCATION environment variable is not set");
