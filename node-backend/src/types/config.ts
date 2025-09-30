@@ -1,4 +1,5 @@
 export type ConfigFile = {
+    secret?: string;
     server?: ServerConfig;
     workspaces?: WorkspaceConfig[];
 }

@@ -1,4 +1,5 @@
 {
+    "secret": "your-secret-key-for-admin-access",
     "server": {
         "title": "Beacon WMS"
     },

@@ -3,9 +3,12 @@ import { Config } from "./service/config";
 import { routes } from "./service/routes";
 import path from "path";
 import { BeaconWmsService } from "./service/beacon-wms";
+import { AdminService } from "./service/admin";
 
 const config = new Config();
 const wmsService: BeaconWmsService = new BeaconWmsService(config);
+const adminService: AdminService = new AdminService(config);
+
 
 config.load(); // async Load config at startup
 
@@ -21,6 +24,7 @@ app.use(appMiddleware)
 app.get(routes.root.getRoute(), homepage);
 app.get(routes.defaultWms.getRoute(), defaultWms);
 app.get(routes.workspaceWms.getRoute(), workspaceWms);
+app.get(routes.updateLayers.getRoute(), updateLayers);
 app.listen(http_port, http_address, () => {
   console.log(`Node backend listening at http://${http_address}:${http_port}`);
   console.log(`Template dir: ${template_dir}`);
@@ -61,6 +65,10 @@ function defaultWms(req: Request, res: Response){
 function workspaceWms(req: Request, res: Response){
     wmsService.handleWmsRequest(req, res);
 
+}
+
+function updateLayers(req: Request, res: Response){
+    adminService.updateLayers(req, res);
 }
 
 function appMiddleware(req: Request, res: Response, next: NextFunction) {

@@ -22,9 +22,13 @@ export class BeaconWmsService {
     constructor(
         private readonly config: Config
     ) {
-        this.beaconWmsBaseUrl = process.env.RUST_BACKEND_URL || this.beaconWmsBaseUrl;
+        this.beaconWmsBaseUrl = BeaconWmsService.getBaseUrl();
         console.log(`Using Rust backend URL: ${this.beaconWmsBaseUrl}`);
         this.wmsXml = new WmsXmlService(this.config);
+    }
+
+    static getBaseUrl(): string {
+        return process.env.RUST_BACKEND_URL || "http://localhost:8000";
     }
 
     async handleWmsRequest(req: Request, res: Response) {

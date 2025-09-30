@@ -45,6 +45,10 @@ export class Config {
         }
     }
 
+    public getSecret(): string | undefined {
+        return this.config?.secret;
+    }
+
     public async getServerConfig(): Promise<ServerConfig | undefined> {
         await this.ensureLoaded();
         return this.config?.server;
