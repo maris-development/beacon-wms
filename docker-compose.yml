@@ -8,17 +8,17 @@ services:
       - "8000"
     environment:
       - HTTP_PORT=8000
-      - CONFIG_DIR=/config
-      - LAYER_DIR=/layers
+      - CONFIG_DIR=/app/config
+      - LAYER_DIR=/app/layers
     volumes:
-      - ./config:/config:ro
-      - ./layers:/layers
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+      - ./layers:/app/layers
     restart: unless-stopped
 
   node-backend:
     build:
       context: ./node-backend
-      dockerfile: Dockerfile
     container_name: node-backend
     ports:
       - "3000:3000"
