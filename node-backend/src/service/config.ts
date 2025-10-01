@@ -54,6 +54,14 @@ export class Config {
         return this.config?.server;
     }
 
+    public async getDefaultWorkspaceConfig(): Promise<WorkspaceConfig | undefined> {
+        await this.ensureLoaded();
+
+        let defaultWorkspace = this.config?.workspaces?.find((ws: WorkspaceConfig) => ws.id === "default");
+        let firstWorkspace = this.config?.workspaces ? this.config.workspaces[0] : undefined;
+
+        return defaultWorkspace ? defaultWorkspace : firstWorkspace;
+    }
 
     public async getWorkspaceConfig(workspaceId: string): Promise<WorkspaceConfig | undefined> {
         await this.ensureLoaded();

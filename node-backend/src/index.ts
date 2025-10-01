@@ -4,6 +4,7 @@ import { routes } from "./service/routes";
 import path from "path";
 import { BeaconWmsService } from "./service/beacon-wms";
 import { AdminService } from "./service/admin";
+import { WorkspaceConfig } from "./types/config";
 
 const config = new Config();
 const wmsService: BeaconWmsService = new BeaconWmsService(config);
@@ -51,13 +52,15 @@ async function homepage(req: Request, res: Response) {
     res.render("index", params);
 }
 
-function defaultWms(req: Request, res: Response){
-    let defaultWorkspaceConfig = config.getWorkspaceConfig("default");
+async function defaultWms(req: Request, res: Response){
+    let defaultWorkspaceConfig: WorkspaceConfig | undefined = await config.getDefaultWorkspaceConfig(); //first find the one with default.
 
     if(!defaultWorkspaceConfig){
         res.status(404).send("Default workspace not found");
         return;
     }
+
+    req.params['workspaceId'] = defaultWorkspaceConfig.id;
 
     workspaceWms(req, res);
 }

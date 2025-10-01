@@ -1,6 +1,6 @@
 use crate::boundingbox::BoundingBox;
 use crate::errors::MapError;
-use arrow::array::{Array, AsArray, PrimitiveArray};
+use arrow::{array::{Array, PrimitiveArray, AsArray, Float64Array, Int64Array, StringArray}};
 use arrow::datatypes::{Float32Type, Float64Type, Int16Type, Int32Type, Int8Type};
 use arrow::datatypes::{Int64Type, TimeUnit};
 use chrono::{Datelike, Local};
@@ -12,7 +12,7 @@ use rusttype::Font;
 use std::collections::HashMap;
 use std::path::{PathBuf};
 use std::string::ToString;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::{
     env,
     fs::{self},
@@ -25,6 +25,10 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     Config,
 };
+use arrow::array::{
+    TimestampSecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
+};
+use chrono::{DateTime};
 
 pub const ARCTIC_MIN_LATITUDE: f64 = 60.0;
 pub const ANTARCTIC_MAX_LATITUDE: f64 = -60.0;
@@ -36,6 +40,47 @@ pub const MERCATOR_MIN_LATITUDE: f64 = -85.06;
 lazy_static! {
     static ref PROJ_CACHE: RwLock<HashMap<String, Proj>> = RwLock::new(HashMap::new());
 }
+
+pub fn get_string_value(col: &Arc<dyn Array>, row_idx: usize) -> String {
+    if let Some(float_arr) = col.as_any().downcast_ref::<Float64Array>() {
+        float_arr.value(row_idx).to_string()
+
+    } else if let Some(int_arr) = col.as_any().downcast_ref::<Int64Array>() {
+        int_arr.value(row_idx).to_string()
+
+    } else if let Some(str_arr) = col.as_any().downcast_ref::<StringArray>() {
+        str_arr.value(row_idx).to_owned()
+
+    } else if let Some(bool_arr) = col.as_any().downcast_ref::<arrow::array::BooleanArray>() {
+        bool_arr.value(row_idx).to_string()
+
+    } else if let Some(timestamp_arr) = col.as_any().downcast_ref::<TimestampSecondArray>() {
+        let ts = timestamp_arr.value(row_idx);
+        DateTime::from_timestamp(ts, 0)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| "invalid".to_string())
+
+    } else if let Some(timestamp_arr) = col.as_any().downcast_ref::<TimestampMillisecondArray>() {
+        let ts = timestamp_arr.value(row_idx);
+        let secs = ts / 1000;
+        let nsecs = ((ts % 1000) * 1_000_000) as u32;
+        DateTime::from_timestamp(secs, nsecs)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| "invalid".to_string())
+
+    } else if let Some(timestamp_arr) = col.as_any().downcast_ref::<TimestampNanosecondArray>() {
+        let ts = timestamp_arr.value(row_idx);
+        let secs = ts / 1_000_000_000;
+        let nsecs = (ts % 1_000_000_000) as u32;
+        DateTime::from_timestamp(secs, nsecs)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| "invalid".to_string())
+
+    } else {
+        "unsupported".to_string()
+    }
+}
+
 
 pub fn transform_coordinates(
     source_projection_code: &str,
@@ -225,9 +270,19 @@ pub fn cast_to_f64(arr: &dyn Array) -> Result<PrimitiveArray<Float64Type>, MapEr
             .as_primitive::<Float32Type>()
             .unary::<_, Float64Type>(|x| x as f64)),
         arrow::datatypes::DataType::Float64 => Ok(arr.as_primitive::<Float64Type>().clone()),
+
+        arrow::datatypes::DataType::Timestamp(TimeUnit::Second, None) => Ok(arr
+            .as_primitive::<arrow::datatypes::TimestampSecondType>()
+            .unary::<_, Float64Type>(|x| x as f64)),
+
         arrow::datatypes::DataType::Timestamp(TimeUnit::Millisecond, None) => Ok(arr
             .as_primitive::<arrow::datatypes::TimestampMillisecondType>()
             .unary::<_, Float64Type>(|x| x as f64)),
+
+        arrow::datatypes::DataType::Timestamp(TimeUnit::Nanosecond, None) => Ok(arr
+            .as_primitive::<arrow::datatypes::TimestampNanosecondType>()
+            .unary::<_, Float64Type>(|x| x as f64)),
+
         unsupported_type => Err(MapError::Error(format!(
             "Unsupported column data type: {:?}",
             unsupported_type

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{Value};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Feature {
@@ -70,17 +70,23 @@ impl GetFeatureInfoCollection {
                 if let Some(properties) = &feature.properties {
                     for col in &cols {
                         if let Some(value) = properties.get(col) {
-                            let value_str = match value {
-                                Value::Number(num) => {
-                                    if let Some(f) = num.as_f64() {
-                                        format!("{:.2}", f)
-                                    } else {
-                                        num.to_string()
-                                    }
-                                }
-                                _ => value.to_string(),
-                            };
-                            html += format!("<td>{}</td>", value_str).as_str();
+                             if let Some(s) = value.as_str() {
+                                // it's a JSON string, print without quotes
+                                html += &format!("<td>{}</td>", s);
+                            } else {
+                                // numbers, bools, objects, arrays: just print normally
+                                html += &format!("<td>{}</td>", value);
+                            }
+                            // let value_str = match value {
+                            //     Value::Number(num) => {
+                            //         if let Some(f) = num.as_f64() {
+                            //             format!("{:.2}", f)
+                            //         } else {
+                            //             num.to_string()
+                            //         }
+                            //     }
+                            //     _ => value.to_string(),
+                            // };
                         }
                     }
                 }
@@ -158,10 +164,14 @@ impl GetFeatureInfoCollection {
     pub fn create_point_feature(
         lng: f64,
         lat: f64,
-        properties: Option<Map<String, Value>>,
+        properties: Option<serde_json::Map<String, Value>>,
     ) -> Feature {
+
+
+
         let mut _geometry: serde_json::map::Map<String, serde_json::Value> =
             serde_json::map::Map::new();
+
         _geometry.insert(String::from("type"), serde_json::Value::from("Point"));
         _geometry.insert(
             String::from("coordinates"),

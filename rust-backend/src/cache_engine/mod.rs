@@ -1,4 +1,4 @@
-use arrow::{array::RecordBatch, datatypes::Field};
+use arrow::{array::{Float64Array, RecordBatch}, datatypes::{DataType, Field}};
 use lru::LruCache;
 use std::{
     num::NonZeroUsize,
@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     errors::MapError,
-    map_drawing::{LATITUDE_COLUMN, LONGITUDE_COLUMN, TIME_COLUMN, VALUE_COLUMN},
+    map_drawing::{LATITUDE_COLUMN, LONGITUDE_COLUMN},
     misc,
 };
 
@@ -33,8 +33,9 @@ impl ReprojectedDatasetCacheEngine {
         source_projection_code: impl AsRef<str>,
         target_projection_code: impl AsRef<str>,
         record_batch_name: impl AsRef<str>,
-        batch: RecordBatch,
+        batch: RecordBatch
     ) -> Result<(), MapError> {
+
         // Check if projection exists, if it does not, create it. If it is being created by another thread, wait for it to finish
         if !self.inner.read().unwrap().projection_applied_batch_exists(
             target_projection_code.as_ref(),
@@ -51,7 +52,7 @@ impl ReprojectedDatasetCacheEngine {
                     source_projection_code.as_ref(),
                     target_projection_code.as_ref(),
                     record_batch_name.as_ref(),
-                    batch,
+                    batch
                 );
             }
         }
@@ -114,7 +115,7 @@ impl InnerReprojectedDatasetCacheEngine {
         source_projection_code: impl AsRef<str>,
         target_projection_code: impl AsRef<str>,
         record_batch_name: impl AsRef<str>,
-        batch: RecordBatch,
+        batch: RecordBatch
     ) -> Result<(), MapError> {
         let source_projection_code = source_projection_code.as_ref().to_uppercase();
         let target_projection_code = target_projection_code.as_ref().to_uppercase();
@@ -140,20 +141,6 @@ impl InnerReprojectedDatasetCacheEngine {
                 "Could not find column 'Longitude' in schema!",
             )))?;
 
-        schema
-            .column_with_name(VALUE_COLUMN)
-            .ok_or(MapError::Error(String::from(
-                "Could not find column 'Value' in schema!",
-            )))?;
-
-        schema
-            .column_with_name(TIME_COLUMN)
-            .ok_or(MapError::Error(String::from(
-                "Could not find column 'Time' in schema!",
-            )))?;
-        
-    
-
         // Do the projection applying and then recreate the record batch for that projection
         // This is done to avoid having to do the projection every time the record batch is used
         let latitude_column = misc::cast_to_f64(batch.column_by_name(LATITUDE_COLUMN).unwrap())?;
@@ -161,18 +148,6 @@ impl InnerReprojectedDatasetCacheEngine {
 
         let longitude_column = misc::cast_to_f64(batch.column_by_name(LONGITUDE_COLUMN).unwrap())?;
         let longitude_column = longitude_column.into_iter();
-
-        let value_column = misc::cast_to_f64(batch.column_by_name(VALUE_COLUMN).unwrap())?;
-        let time_column = misc::cast_to_f64(batch.column_by_name(TIME_COLUMN).unwrap())?;
-
-
-        // log::info!("lat col len: {}", latitude_column.len());
-        // log::info!("lng col len: {}", longitude_column.len());
-        // log::info!("value col len: {}", value_column.len());
-        // log::info!("time col len: {}", time_column.len());
-
-
-
 
         let mut lat_vec: Vec<Option<f64>> = Vec::with_capacity(latitude_column.len());
         let mut lng_vec: Vec<Option<f64>> = Vec::with_capacity(longitude_column.len());
@@ -213,29 +188,34 @@ impl InnerReprojectedDatasetCacheEngine {
             lat_vec.push(Some(coordinates.1));
         }
 
-        let lng_arr = arrow::array::Float64Array::from(lng_vec);
-        let lat_arr = arrow::array::Float64Array::from(lat_vec);
+        let lng_arr = Float64Array::from(lng_vec);
+        let lat_arr = Float64Array::from(lat_vec);
 
-        let fields = vec![
-            Field::new(LONGITUDE_COLUMN, arrow::datatypes::DataType::Float64, true),
-            Field::new(LATITUDE_COLUMN, arrow::datatypes::DataType::Float64, true),
-            Field::new(VALUE_COLUMN, arrow::datatypes::DataType::Float64, true),
-            Field::new(TIME_COLUMN, arrow::datatypes::DataType::Float64, true),
+        let mut fields = vec![
+            Field::new(LONGITUDE_COLUMN, DataType::Float64, true),
+            Field::new(LATITUDE_COLUMN, DataType::Float64, true)
         ];
 
-        
-        
+        let mut columns: Vec<Arc<dyn arrow::array::Array>> = vec![
+            Arc::new(lng_arr),
+            Arc::new(lat_arr)
+        ];
 
-        let new_batch = arrow::record_batch::RecordBatch::try_new(
-            Arc::new(arrow::datatypes::Schema::new(fields)),
-            vec![
-                Arc::new(lng_arr),
-                Arc::new(lat_arr),
-                Arc::new(value_column),
-                Arc::new(time_column),
-            ],
-        )
-        .map_err(|e| MapError::Error(format!("Could not create record batch: {}", e)))?;
+        for field in schema.fields() {
+            if field.name() != LATITUDE_COLUMN && field.name() != LONGITUDE_COLUMN
+            {
+                let new_field = Field::new(field.name(), field.data_type().clone(), true);
+                fields.push(new_field);
+
+                let col = batch.column_by_name(field.name()).unwrap();
+                columns.push(col.clone());
+            }
+        }
+
+        let schema = Arc::new(arrow::datatypes::Schema::new(fields));
+
+        let new_batch = arrow::record_batch::RecordBatch::try_new(schema,columns)
+            .map_err(|e| MapError::Error(format!("Could not create record batch: {}", e)))?;
 
         let cache_key = get_cache_key(target_projection_code, record_batch_name);
 

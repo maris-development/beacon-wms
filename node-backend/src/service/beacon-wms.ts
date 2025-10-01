@@ -329,7 +329,7 @@ export class BeaconWmsService {
         // Placeholder response
         // res.send('GetFeatureInfo request received. Parameters: ' + JSON.stringify(wmsGetFeatureInfoParams));
         // return;
-            
+        console.log('GetFeatureInfo URL:', url.toString());
         fetch(url)
             .then(r => {
                 if (r.ok) {

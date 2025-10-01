@@ -21,7 +21,7 @@ lazy_static! {
 
 pub const LONGITUDE_COLUMN: &'static str = "longitude";
 pub const LATITUDE_COLUMN: &'static str = "latitude";
-pub const VALUE_COLUMN: &'static str = "temperature";
+pub const VALUE_COLUMN: &'static str = "value";
 pub const TIME_COLUMN: &'static str = "time";
 
 pub const COLOR_ONLY_ZOOMLEVEL: u32 = 6;
@@ -92,7 +92,7 @@ pub fn get_map(
                         source_projection_code,
                         target_projection_code,
                         &record_batch_name,
-                        batch,
+                        batch
                     );
 
                     if res.is_err() {
@@ -145,7 +145,6 @@ pub fn get_map(
 
         profiling.mark(&format!("done reading batch {}", record_batch_name));
 
-
         let color_values: PrimitiveArray<UInt32Type> = value_column.unary(|x| {
             let rgba = color_map.query(x);
             let [r, g, b, a] = rgba.0;
@@ -157,10 +156,6 @@ pub fn get_map(
 
 
         let color_values = color_values.into_iter();
-
-        // let value_column = value_column.into_iter();
-
-
         let zipped_iterator = latitude_column.zip(longitude_column).zip(color_values);
 
 

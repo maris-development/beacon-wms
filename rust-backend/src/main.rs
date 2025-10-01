@@ -38,7 +38,7 @@ fn main() {
     let port: u16 = misc::get_env_var("HTTP_PORT", Some("8000"))
         .parse()
         .expect("Invalid port number (must be u16)");
-    let workers: usize = misc::get_env_var("WORKERS", Some("24"))
+    let workers: usize = misc::get_env_var("WORKERS", Some("12"))
         .parse()
         .expect("Invalid number of workers (must be usize)");
 
@@ -142,21 +142,11 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
         }
     }
 
-    let layers_filepaths = workspace
+    let layers_configs = workspace
         .layers
         .iter()
         .filter(|layer| wms_layers.contains(&layer.id))
-        .map(|layer| {
-            match misc::get_layer_filepath(&workspace.id, &layer.id) {
-                Ok(path) => path,
-                Err(e) => {
-                    log::error!("Error getting layer filepath: {:?}", e);
-                    String::new() // Return empty string on error, will be filtered out later
-                }
-            }
-        })
-        .filter(|path| !path.is_empty()) // Filter out any empty paths
-        .collect::<Vec<String>>();
+        .collect::<Vec<&config::LayerConfig>>();
 
     let mut styles = match &get_map_params.styles {
         Some(s) => String::from(s),
@@ -191,13 +181,34 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
 
     let mut image = image_utils::create_rgba_image(get_map_params.width, get_map_params.height);
 
-    let layers_styles_wms_iter = layers_filepaths
+    let layers_styles_wms_iter = layers_configs
         .iter()
         .zip(styles_vec.iter())
         .zip(wms_layers.iter());
 
-    for ((layer_filepath, style), wms_layer) in layers_styles_wms_iter {
-        let color_map = match crate::color_maps::ColorMap::get_named(style, -5.0, 40.0, Some(false))
+    for ((layer_config, style), wms_layer) in layers_styles_wms_iter {
+
+        let layer_filepath =     match misc::get_layer_filepath(&workspace.id, &layer_config.id) {
+            Ok(path) => path,
+            Err(e) => {
+                log::error!("Error getting layer filepath: {:?}", e);
+                String::new() // Return empty string on error, will be filtered out later
+            }
+        };
+
+        if layer_filepath.is_empty() {
+            log::error!(
+                "Layer file path is empty for layer: {} in workspace: {}",
+                layer_config.id,
+                workspace.id
+            );
+            continue;
+        }
+
+        let min_value = layer_config.config.min_value.unwrap_or(-10.0);
+        let max_value = layer_config.config.max_value.unwrap_or(100.0);
+
+        let color_map = match crate::color_maps::ColorMap::get_named(style, min_value, max_value, Some(false))
         {
             Some(map) => map,
             None => {
@@ -216,7 +227,7 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
             wms_layer,
             color_map,
             &get_map_params.crs,
-            layer_filepath,
+            &layer_filepath,
             &mut profiling,
         );
 

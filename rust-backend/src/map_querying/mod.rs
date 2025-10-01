@@ -1,12 +1,12 @@
-use arrow::{array::AsArray, datatypes::Float64Type};
-use serde_json::{Map};
+use arrow::{array::{AsArray}, datatypes::Float64Type};
+use serde_json::{Map, Value};
 
 use crate::{
     boundingbox::BoundingBox,
     data_utils,
     errors::MapError,
     map_drawing::{
-        LATITUDE_COLUMN, LONGITUDE_COLUMN, REPROJECTED_DATASET_CACHE, TIME_COLUMN, VALUE_COLUMN,
+        LATITUDE_COLUMN, LONGITUDE_COLUMN, REPROJECTED_DATASET_CACHE,
     },
     map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection},
     misc,
@@ -121,7 +121,7 @@ pub fn get_feature_info(
                         source_projection_code,
                         target_projection_code,
                         &record_batch_name,
-                        batch,
+                        batch
                     );
 
                     if res.is_err() {
@@ -163,38 +163,24 @@ pub fn get_feature_info(
             .clone();
         let longitude_column = longitude_column.into_iter();
 
-        let value_column = batch
-            .column_by_name(VALUE_COLUMN)
-            .unwrap()
-            .as_primitive::<Float64Type>()
-            .clone();
-        let value_column = value_column.into_iter();
-
-        let time_column = batch
-            .column_by_name(TIME_COLUMN)
-            .unwrap()
-            .as_primitive::<Float64Type>()
-            .clone();
-        let time_column = time_column.into_iter();
-
-        let zipped_values_iterator = value_column.zip(time_column);
         let zipped_iterator = latitude_column
-            .zip(longitude_column)
-            .zip(zipped_values_iterator);
+            .zip(longitude_column);
 
-        for ((lat, lng), (val, time)) in zipped_iterator {
+        let mut row_idx = 0;
+        for (lat, lng) in zipped_iterator {
+            row_idx += 1;
+            
             if results.len() >= feature_count as usize {
                 break;
             }
 
-            if lat.is_none() || lng.is_none() || val.is_none() || time.is_none() {
+            if lat.is_none() || lng.is_none() {
                 continue;
             }
 
             let lat = lat.unwrap();
             let lng = lng.unwrap();
-            let val = val.unwrap();
-            let time = time.unwrap();
+        
 
             // log::info!("y: {}, x: {}", lat, lng);
 
@@ -202,16 +188,49 @@ pub fn get_feature_info(
                 //reproject coordinates to target projection for the response.
                 let mut _coordinates = (lng, lat);
 
-                let mut _properties: Map<String, serde_json::Value> = Map::new();
+                let mut _properties: serde_json::Map<String, Value> = Map::new();
 
-                _properties.insert(String::from("value"), serde_json::Value::from(val));
-                _properties.insert(String::from("time"), serde_json::Value::from(time));
+                // log::info!("Fields: {:?}", batch.schema().fields());
+
+                // Add all other columns dynamically
+                for (col_idx, field) in batch.schema().fields().iter().enumerate() {
+                    let col_name = field.name();
+
+                    
+
+                    if col_name == LATITUDE_COLUMN
+                        || col_name == LONGITUDE_COLUMN
+                    {
+                        continue;
+                    }
+
+                    // log::info!("Processing column: {}", col_name);
+
+                    let col = batch.column(col_idx);
+
+                    if col.is_null(row_idx) {
+                        continue;
+                    }
+
+                    // Convert value to JSON (simple case: primitive types)
+                    let string_value = misc::get_string_value(col, row_idx);
+
+                    _properties.insert(col_name.clone(), Value::String(string_value));
+
+                }
 
                 let feature = GetFeatureInfoCollection::create_point_feature(
                     lng,
                     lat,
                     Some(_properties.clone()),
                 );
+
+
+
+                // log::info!(
+                //     "Feature: {:?}",
+                //     _properties.keys()
+                // );
 
                 results.push(feature);
             }
