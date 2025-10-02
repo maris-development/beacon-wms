@@ -5,7 +5,7 @@ import { WmsXmlService } from "./wms-xml";
 import { WorkspaceConfig } from "../types/config";
 import { request } from "http";
 import { WMSGetFeatureInfoParameters, WMSGetMapParameters } from "../types/ogc-wms";
-
+import logger from "./logger";
 
 export class BeaconWmsService {
     private wmsXml: WmsXmlService;
@@ -23,7 +23,7 @@ export class BeaconWmsService {
         private readonly config: Config
     ) {
         this.beaconWmsBaseUrl = BeaconWmsService.getBaseUrl();
-        console.log(`Using Rust backend URL: ${this.beaconWmsBaseUrl}`);
+        logger.info(`Using Rust backend URL: ${this.beaconWmsBaseUrl}`);
         this.wmsXml = new WmsXmlService(this.config);
     }
 
@@ -91,9 +91,9 @@ export class BeaconWmsService {
             })
             .catch(response => {
                 try{
-                    response.text().then((text: string) => console.error(text));
+                    response.text().then((text: string) => logger.error(text));
                 } catch(_){
-                    console.error(response);
+                    logger.error(response);
                 }
                 return [];
             });
@@ -221,9 +221,9 @@ export class BeaconWmsService {
             })
             .catch(response => {
                 try{
-                    response.text().then((text: string) => console.error(text));
+                    response.text().then((text: string) => logger.error(text));
                 } catch(_){
-                    console.error(response);
+                    logger.error(response);
                 }
                 this.wmsXml.error(res, "ServerError", `Error fetching map from Rust service: ${response.statusText || response}`);
             });
@@ -329,7 +329,7 @@ export class BeaconWmsService {
         // Placeholder response
         // res.send('GetFeatureInfo request received. Parameters: ' + JSON.stringify(wmsGetFeatureInfoParams));
         // return;
-        console.log('GetFeatureInfo URL:', url.toString());
+        logger.info('GetFeatureInfo URL:', url.toString());
         fetch(url)
             .then(r => {
                 if (r.ok) {
@@ -354,9 +354,9 @@ export class BeaconWmsService {
             })
             .catch(response => {
                 try{
-                    response.text().then((text: string) => console.error(text));
+                    response.text().then((text: string) => logger.error(text));
                 } catch(_){
-                    console.error(response);
+                    logger.error(response);
                 }
                 this.wmsXml.error(res, "ServerError", `Error fetching feature info from Rust service: ${response.statusText || response}`);
             });

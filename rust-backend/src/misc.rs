@@ -516,7 +516,7 @@ pub fn print_bbox_on_image(bbox: &BoundingBox, image: &mut RgbaImage) {
 /// Configures logger
 /// Is able to log to a http server, console and file
 pub fn configure_logger() {
-    let log_file_location = env::var("LOG_FILE").unwrap_or({
+    let log_dir = env::var("LOG_DIR").unwrap_or({
         //get current directory:
 
         let log_dir = env::current_dir()
@@ -524,20 +524,20 @@ pub fn configure_logger() {
             .into_os_string()
             .into_string()
             .unwrap()
-            + "/logs/";
+            + "/logs";
 
         //create dir if not exists:
         if !std::path::Path::new(&log_dir).exists() {
             fs::create_dir(&log_dir).unwrap();
         }
 
-        let now = Local::now();
-
-        let log_file =
-            log_dir + format!("log_{}-{}-{}.ansi.log", now.year(), now.month(), now.day()).as_str();
-
-        log_file
+        log_dir
     });
+
+    let now = Local::now();
+
+    let log_file_location = format!("{}/log_{}-{}-{}.ansi.log", log_dir, now.year(), now.month(), now.day());
+
 
     println!("Logging to: {}", &log_file_location);
 
@@ -569,9 +569,9 @@ pub fn configure_logger() {
 
     log4rs::init_config(config).unwrap();
 
-    log_panics::init();
+    log_panics::init(); 
 
-    log::info!("Logger configured");
+    log::info!("Logger configured, logging to: {}", log_dir);
 }
 
 pub fn read_config_file() -> crate::config::ConfigFile {

@@ -2,6 +2,7 @@
 
 import { readFile, writeFile } from "fs/promises";
 import { ConfigFile, ServerConfig, WorkspaceConfig } from "../types/config";
+import logger from "./logger";
 
 const CONFIG_DIR = process.env.CONFIG_DIR || "../config"; // Docker config dir
 const CONFIG_FILE_LOCATION = `${CONFIG_DIR}/config.json`; // Config file location
@@ -19,15 +20,11 @@ export class Config {
 
             data = await readFile(CONFIG_FILE_LOCATION, "utf-8");
 
-            // console.log("Loaded config file from " + configLocation, data);
-
         }catch(err){
-            console.error(err);
+            logger.error(err);
         }
 
         this.config = JSON.parse(data);
-
-        // console.log(">>>>>>>>>>>>>> Config loaded", this.config);
     }
 
     public save = async (): Promise<void> => {

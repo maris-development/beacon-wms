@@ -1,5 +1,8 @@
 import { compile } from "path-to-regexp";
 
+const path_prefix = process.env.PATH_PREFIX || "";
+
+
 export class Route {
     private route: string;
 
@@ -11,7 +14,9 @@ export class Route {
         return this.route;
     }
     public toPath = (params?: Record<string, string>): string => {
+        
         const toPath = compile(this.route);
+
         return toPath(params || {});
     }
 

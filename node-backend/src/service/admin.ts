@@ -8,7 +8,7 @@ import { WMSGetFeatureInfoParameters, WMSGetMapParameters } from "../types/ogc-w
 import { ParamsDictionary } from "express-serve-static-core";
 import { ParsedQs } from "qs";
 import { BeaconWmsService } from "./beacon-wms";
-
+import logger from "./logger";
 
 export class AdminService {
 
@@ -45,7 +45,7 @@ export class AdminService {
         try {
             this.checkSecret(req);
         } catch (err) {
-            console.log("Unauthorized attempt to update layers", err);
+            logger.info("Unauthorized attempt to update layers", err);
             res.status(401).send("Unauthorized");
             return;
         }
@@ -64,11 +64,11 @@ export class AdminService {
                 return response.text();
             })
             .then((data) => {
-                console.log("Layers updated", data);
+                logger.info("Layers updated", data);
                 res.status(200).send(data);
             })
             .catch((err) => {
-                console.error("Error updating layers:", err);
+                logger.error("Error updating layers:", err);
                 // Send a more structured error response
                 res.status(err.response?.status || 500).json({
                     error: "Error updating layers",

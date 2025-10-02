@@ -5,6 +5,7 @@ import path from "path";
 import { BeaconWmsService } from "./service/beacon-wms";
 import { AdminService } from "./service/admin";
 import { WorkspaceConfig } from "./types/config";
+import logger from "./service/logger";
 
 const config = new Config();
 const wmsService: BeaconWmsService = new BeaconWmsService(config);
@@ -27,8 +28,8 @@ app.get(routes.defaultWms.getRoute(), defaultWms);
 app.get(routes.workspaceWms.getRoute(), workspaceWms);
 app.get(routes.updateLayers.getRoute(), updateLayers);
 app.listen(http_port, http_address, () => {
-  console.log(`Node backend listening at http://${http_address}:${http_port}`);
-  console.log(`Template dir: ${template_dir}`);
+  logger.info(`Node backend listening at http://${http_address}:${http_port}`);
+  logger.info(`Template dir: ${template_dir}`);
 });
 
 
