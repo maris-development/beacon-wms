@@ -538,9 +538,6 @@ pub fn configure_logger() {
 
     let log_file_location = format!("{}/log_{}-{}-{}.ansi.log", log_dir, now.year(), now.month(), now.day());
 
-
-    println!("Logging to: {}", &log_file_location);
-
     let logfile = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{d} - {l} - {t} - {m};\n")))
         .build(log_file_location)

@@ -77,6 +77,8 @@ function updateLayers(req: Request, res: Response){
 
 function appMiddleware(req: Request, res: Response, next: NextFunction) {
     let promises = [];
+
+    logger.info(`${req.method} ${req.url}`);
     
     promises.push(config.load()); // Ensure config is (re)loaded every request
 
