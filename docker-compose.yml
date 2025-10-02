@@ -26,6 +26,7 @@ services:
       - HTTP_ADDRESS=0.0.0.0
       - HTTP_PORT=3000
       - HTTP_HOST=https://beacon-ihm.maris.nl
+      - HTTP_PROTOCOL=https
       - RUST_BACKEND_URL=http://rust-backend:8000
       - CONFIG_DIR=/app/config
       - LOG_DIR=/app/logs

@@ -22,12 +22,13 @@ export class WmsXmlService {
 
     async getCapabilities(req: Request, res: Response, workspace: WorkspaceConfig, availableStyles: string[], wmsVersion: string = "1.3.0") {
         const http_host = process.env.HTTP_HOST || req.get('host');
+        const http_protocol = process.env.HTTP_PROTOCOL || req.protocol;
 
         const params = {
             wmsVersion,
             workspace,
             availableStyles,
-            baseUrl: req.protocol + '://' + http_host + req.originalUrl.split('?')[0],
+            baseUrl: http_protocol + '://' + http_host + req.originalUrl.split('?')[0],
             server: await this.config.getServerConfig()
         }
         
