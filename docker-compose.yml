@@ -28,6 +28,7 @@ services:
       - RUST_BACKEND_URL=http://rust-backend:8000
       - CONFIG_DIR=/app/config
       - LOG_DIR=/app/logs
+      - PATH_PREFIX=/wms
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs

@@ -23,8 +23,8 @@ export class Route {
 }
 
 export const routes = {
-    root: new Route("/"),
-    updateLayers: new Route("/admin/update-layers"),
-    defaultWms: new Route("/wms"),
-    workspaceWms: new Route("/workspaces/:workspaceId/wms"),
+    root: new Route(`${path_prefix}/`),
+    updateLayers: new Route(`${path_prefix}/admin/update-layers`),
+    defaultWms: new Route(`${path_prefix}/wms`),
+    workspaceWms: new Route(`${path_prefix}/workspaces/:workspaceId/wms`),
 };
