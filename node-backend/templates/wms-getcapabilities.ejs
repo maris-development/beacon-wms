@@ -92,7 +92,7 @@
                     <% availableStyles.forEach(function(style) { %>
                         <Style>
                         <Name><%= style.name %></Name>
-                        <Title><%= style.description %></Title>
+                        <Title><%= style.description %> (shape: <%= layer.config.shape %>)</Title>
                         </Style>
                     <% }); %>
                 </Layer>

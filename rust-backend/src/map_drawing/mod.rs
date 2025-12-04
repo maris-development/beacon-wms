@@ -22,7 +22,6 @@ lazy_static! {
 pub const LONGITUDE_COLUMN: &'static str = "longitude";
 pub const LATITUDE_COLUMN: &'static str = "latitude";
 pub const VALUE_COLUMN: &'static str = "value";
-pub const TIME_COLUMN: &'static str = "time";
 
 pub const COLOR_ONLY_ZOOMLEVEL: u32 = 6;
 pub const SMALL_ICON_ZOOMLEVEL: u32 = 8;
@@ -36,6 +35,7 @@ pub fn get_map(
     color_map: ColorMap,
     crs: &str,
     layer_filepath: &str,
+    icon_shape: &str,
     profiling: &mut RequestProfiling
 ) -> Result<usize, MapError> {
     let source_projection_code = "EPSG:4326";
@@ -192,7 +192,15 @@ pub fn get_map(
 
                 // let color = Rgba([255u8, 0u8, 0u8, 255u8]);//ColorMap::get_color(val);
 
-                let draw_result: Result<(), MapError> = draw_point(image, offset, color, Some(point_radius));
+                let draw_result: Result<(), MapError> = match icon_shape {
+                    "circle" => draw_circle(image, offset, color, Some(point_radius)),
+                    "square" => draw_square(image, offset, color, Some(point_radius)),
+                    "plus" => draw_plus(image, offset, color, Some(point_radius)),
+                    "triangle" => draw_triangle(image, offset, color, Some(point_radius)),
+                    _ => draw_circle(image, offset, color, Some(point_radius)),
+                };
+
+
 
                 if draw_result.is_err() {
                     log::error!("Could not draw image: {:?}", draw_result.err().unwrap());
@@ -211,7 +219,7 @@ pub fn get_map(
 
 
 
-fn draw_point(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, radius: Option<i32>) -> Result<(), MapError> {
+fn draw_circle(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, radius: Option<i32>) -> Result<(), MapError> {
     let radius = radius.unwrap_or(2);
 
     for x in -radius..=radius {
@@ -230,13 +238,81 @@ fn draw_point(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, radius:
     Ok(())
 }
 
+fn draw_square(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_size: Option<i32>) -> Result<(), MapError> {
+    let half_size = half_size.unwrap_or(2);
+
+    for x in -half_size..=half_size {
+        for y in -half_size..=half_size {
+            let x = point.0 + x;
+            let y = point.1 + y;
+
+            if misc::inside_image(image, (x, y)) {
+                image.put_pixel(x as u32, y as u32, color);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+ fn draw_plus(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_size: Option<i32>) -> Result<(), MapError> {
+
+    let half_size = half_size.unwrap_or(2);
+    let mut thickness = (half_size / 2).max(1); // Ensure a minimum thickness of 1 pixel
+    while thickness % 2 == 0 {
+        // Make sure thickness is odd for symmetry
+        thickness += 1;
+    }
+    // We can draw both the vertical and horizontal lines in one loop
+    // to be more efficient than iterating the whole bounding box (O(N) vs O(N^2)).
+
+    for i in -half_size..=half_size {
+        // Horizontal line points: (center_x + i, center_y)
+        for t in -(thickness / 2)..=(thickness / 2) {
+            let h_x = point.0 + i;
+            let h_y = point.1 + t;
+            if misc::inside_image(image, (h_x, h_y)) {
+                image.put_pixel(h_x as u32, h_y as u32, color);
+            }
+        }
+
+    
+        // Vertical line points: (center_x, center_y + i)
+        for t in -(thickness / 2)..=(thickness / 2) {
+            let v_x = point.0 + t;
+            let v_y = point.1 + i;
+            if misc::inside_image(image, (v_x, v_y)) {
+                image.put_pixel(v_x as u32, v_y as u32, color);
+            }
+        }
+    }
+
+    Ok(())
+}
 
 
+fn draw_triangle(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_size: Option<i32>) -> Result<(), MapError> {
+    let half_size = half_size.unwrap_or(2);
 
+    for y_offset in -half_size..=half_size {
+        // We calculate the maximum allowed x-width for the current row.
+        // As y goes down (increases), the triangle gets wider.
+        // The division by 2 ensures a standard triangle slope (approx 60 degrees) 
+        // rather than a very wide 90-degree slope.
+        let max_x_width = (y_offset + half_size) / 2;
 
+        for x_offset in -max_x_width..=max_x_width {
+            let x = point.0 + x_offset;
+            let y = point.1 + y_offset;
 
+            if misc::inside_image(image, (x, y)) {
+                image.put_pixel(x as u32, y as u32, color);
+            }
+        }
+    }
 
-
+    Ok(())
+}
 
 
 

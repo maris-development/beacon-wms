@@ -203,6 +203,10 @@ impl ColorMap {
             return Rgba([0, 0, 0, 255]); // fallback
         }
 
+        if self.colors.len() == 1 {
+            return self.colors[0].1; // only one color in the scale
+        }
+        
         // Normalize value to [0,1]
         let normalized_value =
             ((value - self.min_value) / (self.max_value - self.min_value)).clamp(0.0, 1.0);

@@ -1,6 +1,57 @@
 {
     "colormaps": [
         {
+            "name": "solid_black",
+            "description": "A solid black single color layer style.",
+            "interpolation": "nearest",
+            "scale": [[0,[0,0,0]],[1,[0,0,0]]]
+        },
+        {
+            "name": "solid_red",
+            "description": "A warm, soft red single color layer style.",
+            "interpolation": "nearest",
+            "scale": [[0, [200, 60, 60]], [1, [200, 60, 60]]]
+        },
+        {
+            "name": "solid_blue",
+            "description": "A calm, medium blue single color layer style.",
+            "interpolation": "nearest",
+            "scale": [[0, [70, 120, 200]], [1, [70, 120, 200]]]
+        },
+        {
+            "name": "solid_green",
+            "description": "A natural, fresh green single color layer style.",
+            "interpolation": "nearest",
+            "scale": [[0, [70, 160, 90]], [1, [70, 160, 90]]]
+        },
+        {
+            "name": "solid_yellow",
+            "description": "A warm, muted yellow single color layer style.",
+            "interpolation": "nearest",
+            "scale": [[0, [230, 200, 80]], [1, [230, 200, 80]]]
+        },
+        {
+            "name": "solid_orange",
+            "description": "A cozy, gentle orange single color layer style.",
+            "interpolation": "nearest",
+            "scale": [[0, [230, 130, 60]], [1, [230, 130, 60]]]
+        },
+        {
+            "name": "solid_purple",
+            "description": "A soft lavender-like purple single color layer style.",
+            "interpolation": "nearest",
+            "scale": [[0, [150, 100, 200]], [1, [150, 100, 200]]]
+        },
+        {
+            "name": "solid_gray",
+            "description": "A neutral medium-gray single color layer style.",
+            "interpolation": "nearest",
+            "scale": [[0, [120, 120, 120]], [1, [120, 120, 120]]]
+        },
+
+
+
+        {
             "name": "algae",
             "description": "Legend data for `algae` obtained from cmocean: https://github.com/matplotlib/cmocean",
             "interpolation": "lab",

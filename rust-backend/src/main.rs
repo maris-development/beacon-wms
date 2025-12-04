@@ -156,7 +156,12 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
     if styles.trim().is_empty() {
         // If no styles provided, default to "rainbow" for each layer
         styles = (0..wms_layers.len())
-            .map(|_| "thermal")
+            .map(|i: usize| {
+                match &layers_configs[i].config.default_style {
+                    Some(style) => style.clone(),
+                    None => String::from("thermal"),
+                }
+            })
             .collect::<Vec<_>>()
             .join(",");
     }
@@ -221,13 +226,19 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
             }
         };
 
+        let icon_shape = match &layer_config.config.shape {
+            Some(shape) => shape.as_str(),
+            None => "circle",
+        }; 
+
         let drawing_result = map_drawing::get_map(
             &mut image,
             bounding_box.clone(),
             wms_layer,
-            color_map,
+            color_map, 
             &get_map_params.crs,
             &layer_filepath,
+            icon_shape,
             &mut profiling,
         );
 

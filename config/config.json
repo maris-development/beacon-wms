@@ -13,22 +13,26 @@
                     "id": "aquadesk-noordzee-benthosmonitoring-1951-2025",
                     "name": "AQUADESK Noordzee benthosmonitoring 1951–2025",
                     "config": {
+                        "default_style": "solid_green",
                         "instance_url": "https://beacon-ihm.maris.nl",
                         "token": "none",
                         "query": {"from":"easy_ihm_aquadesk_noordzee","query_parameters":[{"column":"collectie_tijd","alias":"time"},{"column":"longitude","alias":null},{"column":"latitude","alias":null},{"column":"waarde_gemeten","alias":"value"},{"column":"waarde_berekend","alias":null},{"column":"eenheid_gemeten","alias":null},{"column":"eenheid_berekend","alias":null},{"column":"scientific_name_accepted","alias":null},{"column":"grootheid_code","alias":null},{"column":"compartiment_code","alias":null}],"filters":[{"for_query_parameter":"time","min":"1991-01-01T00:00:00Z","max":"2025-12-31T23:59:59Z"},{"for_query_parameter":"longitude","min":-180,"max":180},{"for_query_parameter":"latitude","min":-90,"max":90},{"or":[{"eq":"n","for_query_parameter":"eenheid_gemeten"}]},{"or":[{"eq":"n/m2","for_query_parameter":"eenheid_berekend"}]}],"output":{"format":"parquet"}},
                         "min_value": 0.0,
-                        "max_value": 50000.0
+                        "max_value": 50000.0,
+                        "shape": "plus"
                     }
                 },
                 {
                     "id": "wadar-2023",
                     "name": "WADAR Watertemperatuur 2023",
                     "config": {
+                        "default_style": "solid_blue",
                         "instance_url": "https://beacon-ihm.maris.nl",
                         "token": "none",
                         "query": {"from":"easy_ihm_wadar","query_parameters":[{"column":"longitude","alias":null},{"column":"latitude","alias":null},{"column":"Tijdstip","alias":"time"},{"column":"waarde","alias":"value"},{"column":"Bemonsteringshoogte","alias":null},{"column":"referentie","alias":null},{"column":"compartiment_code","alias":null},{"column":"grootheid","alias":null},{"column":"parameter_code","alias":null},{"column":"eenheid","alias":null}],"filters":[{"for_query_parameter":"time","min":"2022-12-31T22:00:00.000Z","max":"2023-12-31T23:59:59Z"},{"for_query_parameter":"value","min":-5,"max":40},{"or":[{"eq":"graad Celsius","for_query_parameter":"eenheid"}]}],"output":{"format":"parquet"}},
                         "min_value": -5.0,
-                        "max_value": 40.0
+                        "max_value": 40.0,
+                        "shape": "triangle"
                     }
                 }
             ]

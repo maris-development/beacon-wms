@@ -33,9 +33,11 @@ pub struct LayerConfig {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LayerInnerConfig {
+    pub default_style: Option<String>,
     pub instance_url: String,
     pub token: String,
     pub query: HashMap<String, serde_json::Value>,
     pub min_value: Option<f64>,
     pub max_value: Option<f64>,
+    pub shape: Option<String>,
 }
