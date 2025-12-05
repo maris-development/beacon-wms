@@ -184,7 +184,7 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
 
     profiling.mark("query parsed");
 
-    let mut image = image_utils::create_rgba_image(get_map_params.width, get_map_params.height);
+    let mut image: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> = image_utils::create_rgba_image(get_map_params.width, get_map_params.height);
 
     let layers_styles_wms_iter = layers_configs
         .iter()
@@ -255,6 +255,16 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
             profiling.mark(&format!("drawn {}", wms_layer));
         }
     }
+
+    // profiling.mark(&format!("applying shadow"));
+
+    // image_utils::apply_shadow(
+    //     &mut image,
+    //     1, 
+    //     image::Rgba([0, 0, 0, 100]), 
+    // );
+
+    // profiling.mark(&format!("shadow applied"));
 
     let mut png_data: Vec<u8> = Vec::new();
     let output_buffer = image_utils::rgba_image_to_png(&image, &mut png_data);
