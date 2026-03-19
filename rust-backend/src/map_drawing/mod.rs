@@ -1,10 +1,9 @@
 use arrow::array::{AsArray, PrimitiveArray};
 use arrow::datatypes::{Float64Type, UInt32Type};
 use boundingbox::BoundingBox;
-use image::{Pixel, Rgba, RgbaImage};
+use image::{GenericImage, Pixel, Rgba, RgbaImage};
 use lazy_static::lazy_static;
 use log;
-use std::collections::HashSet;
 
 use crate::cache_engine::ReprojectedDatasetCacheEngine;
 use crate::color_maps::ColorMap;
@@ -62,8 +61,21 @@ pub fn get_map(
     let zoom = misc::degrees_per_pixel_to_zoom(degree_per_pixel, None);
     let point_radius = misc::calculate_point_radius(zoom, 5.0, 40.0);
     // let scale_factor: f64 = misc::calculate_scale_factor(degree_per_pixel);
-    let bbox_margin = Some(reprojected_bbox.get_width() * 0.1);
-    let mut drawn_points_set: HashSet<(i64, i64)> = HashSet::new();
+    let margin = reprojected_bbox.get_width() * 0.1;
+    // Pre-compute bbox bounds for fast inline checks (avoids method call + Option unwrap per point)
+    let bbox_min_x = reprojected_bbox.get_min_x() - margin;
+    let bbox_max_x = reprojected_bbox.get_max_x() + margin;
+    let bbox_min_y = reprojected_bbox.get_min_y() - margin;
+    let bbox_max_y = reprojected_bbox.get_max_y() + margin;
+    let (img_w, img_h) = image.dimensions();
+    let mut drawn_pixel_grid: Vec<bool> = vec![false; (img_w as usize) * (img_h as usize)];
+    let mut drawn_count: usize = 0;
+
+    // Build color lookup table (1024 entries) for O(1) color mapping
+    let color_lut = color_map.build_lut(1024);
+    let lut_size = color_lut.len();
+    let cm_min = color_map.get_min_value();
+    let cm_range = color_map.get_max_value() - cm_min;
 
     let reader = data_utils::open_parquet_reader(layer, layer_filepath)?;
 
@@ -125,30 +137,28 @@ pub fn get_map(
         let latitude_column = batch
             .column_by_name(LATITUDE_COLUMN)
             .unwrap()
-            .as_primitive::<Float64Type>()
-            .clone();
+            .as_primitive::<Float64Type>();
         let latitude_column = latitude_column.into_iter();
 
         let longitude_column = batch
             .column_by_name(LONGITUDE_COLUMN)
             .unwrap()
-            .as_primitive::<Float64Type>()
-            .clone();
+            .as_primitive::<Float64Type>();
         let longitude_column = longitude_column.into_iter();
 
         let value_column = batch
             .column_by_name(VALUE_COLUMN)
             .unwrap()
-            .as_primitive::<Float64Type>()
-            .clone();
+            .as_primitive::<Float64Type>();
 
 
         profiling.mark(&format!("done reading batch {}", record_batch_name));
 
         let color_values: PrimitiveArray<UInt32Type> = value_column.unary(|x| {
-            let rgba = color_map.query(x);
-            let [r, g, b, a] = rgba.0;
-            ((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32)
+            // O(1) LUT lookup instead of per-value interpolation
+            let normalized = ((x - cm_min) / cm_range).clamp(0.0, 1.0);
+            let idx = (normalized * (lut_size - 1) as f64) as usize;
+            color_lut[idx]
         });
 
         
@@ -170,41 +180,38 @@ pub fn get_map(
             let coordinates = (lng.unwrap(), lat.unwrap()); // X Y
             let color = image_utils::unpack_rgba(color.unwrap());
 
-            // log::info!("coordinates: {:?}", coordinates);
-            // log::info!("bbox: {:?}", reprojected_bbox);
-            // log::info!("in_bbox: {:?}", reprojected_bbox.in_bbox(coordinates, bbox_margin));
-
-            let point_key  = (coordinates.0 as i64, coordinates.1 as i64);
-
-            if drawn_points_set.contains(&point_key) {
+            // Fast inline bbox check using pre-computed bounds
+            let (x, y) = coordinates;
+            if x < bbox_min_x || x > bbox_max_x || y < bbox_min_y || y > bbox_max_y {
                 continue;
-            } else {
-                drawn_points_set.insert(point_key);
             }
-        
-            if reprojected_bbox.in_bbox(coordinates, bbox_margin) {
-        
-                let offset = misc::coordinates_to_pixel_offset(
-                    &reprojected_bbox,
-                    image.dimensions(),
-                    coordinates,
-                );
 
-                // let color = Rgba([255u8, 0u8, 0u8, 255u8]);//ColorMap::get_color(val);
+            let offset = misc::coordinates_to_pixel_offset(
+                &reprojected_bbox,
+                (img_w, img_h),
+                coordinates,
+            );
 
-                let draw_result: Result<(), MapError> = match icon_shape {
-                    "circle" => draw_circle(image, offset, color, Some(point_radius)),
-                    "square" => draw_square(image, offset, color, Some(point_radius)),
-                    "plus" => draw_plus(image, offset, color, Some(point_radius)),
-                    "triangle" => draw_triangle(image, offset, color, Some(point_radius)),
-                    _ => draw_circle(image, offset, color, Some(point_radius)),
-                };
-
-
-
-                if draw_result.is_err() {
-                    log::error!("Could not draw image: {:?}", draw_result.err().unwrap());
+            // Pixel-grid deduplication: skip if this pixel was already drawn
+            if offset.0 >= 0 && offset.0 < img_w as i32 && offset.1 >= 0 && offset.1 < img_h as i32 {
+                let grid_idx = offset.1 as usize * img_w as usize + offset.0 as usize;
+                if drawn_pixel_grid[grid_idx] {
+                    continue;
                 }
+                drawn_pixel_grid[grid_idx] = true;
+                drawn_count += 1;
+            }
+
+            let draw_result: Result<(), MapError> = match icon_shape {
+                "circle" => draw_circle(image, offset, color, Some(point_radius)),
+                "square" => draw_square(image, offset, color, Some(point_radius)),
+                "plus" => draw_plus(image, offset, color, Some(point_radius)),
+                "triangle" => draw_triangle(image, offset, color, Some(point_radius)),
+                _ => draw_circle(image, offset, color, Some(point_radius)),
+            };
+
+            if draw_result.is_err() {
+                log::error!("Could not draw image: {:?}", draw_result.err().unwrap());
             }
         }
 
@@ -214,22 +221,24 @@ pub fn get_map(
 
     // misc::print_bbox_on_image(&reprojected_bbox, image); //debugging
 
-    return Ok(drawn_points_set.len());
+    return Ok(drawn_count);
 }
 
 
 
 fn draw_circle(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, radius: Option<i32>) -> Result<(), MapError> {
     let radius = radius.unwrap_or(2);
+    let r_sq = radius * radius;
 
     for x in -radius..=radius {
         for y in -radius..=radius {
-            if x * x + y * y <= radius * radius {
-                let x = point.0 + x;
-                let y = point.1 + y;
+            if x * x + y * y <= r_sq {
+                let px = point.0 + x;
+                let py = point.1 + y;
 
-                if misc::inside_image(image, (x, y)) {
-                    image.put_pixel(x as u32, y as u32, color);
+                if misc::inside_image(image, (px, py)) {
+                    // SAFETY: bounds verified by inside_image above
+                    unsafe { image.unsafe_put_pixel(px as u32, py as u32, color); }
                 }
             }
         }
@@ -243,11 +252,12 @@ fn draw_square(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_s
 
     for x in -half_size..=half_size {
         for y in -half_size..=half_size {
-            let x = point.0 + x;
-            let y = point.1 + y;
+            let px = point.0 + x;
+            let py = point.1 + y;
 
-            if misc::inside_image(image, (x, y)) {
-                image.put_pixel(x as u32, y as u32, color);
+            if misc::inside_image(image, (px, py)) {
+                // SAFETY: bounds verified by inside_image above
+                unsafe { image.unsafe_put_pixel(px as u32, py as u32, color); }
             }
         }
     }
@@ -272,7 +282,8 @@ fn draw_square(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_s
             let h_x = point.0 + i;
             let h_y = point.1 + t;
             if misc::inside_image(image, (h_x, h_y)) {
-                image.put_pixel(h_x as u32, h_y as u32, color);
+                // SAFETY: bounds verified by inside_image above
+                unsafe { image.unsafe_put_pixel(h_x as u32, h_y as u32, color); }
             }
         }
 
@@ -282,7 +293,8 @@ fn draw_square(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_s
             let v_x = point.0 + t;
             let v_y = point.1 + i;
             if misc::inside_image(image, (v_x, v_y)) {
-                image.put_pixel(v_x as u32, v_y as u32, color);
+                // SAFETY: bounds verified by inside_image above
+                unsafe { image.unsafe_put_pixel(v_x as u32, v_y as u32, color); }
             }
         }
     }
@@ -302,11 +314,12 @@ fn draw_triangle(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half
         let max_x_width = (y_offset + half_size) / 2;
 
         for x_offset in -max_x_width..=max_x_width {
-            let x = point.0 + x_offset;
-            let y = point.1 + y_offset;
+            let px = point.0 + x_offset;
+            let py = point.1 + y_offset;
 
-            if misc::inside_image(image, (x, y)) {
-                image.put_pixel(x as u32, y as u32, color);
+            if misc::inside_image(image, (px, py)) {
+                // SAFETY: bounds verified by inside_image above
+                unsafe { image.unsafe_put_pixel(px as u32, py as u32, color); }
             }
         }
     }

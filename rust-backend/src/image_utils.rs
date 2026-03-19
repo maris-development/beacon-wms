@@ -1,4 +1,4 @@
-use image::{codecs::{png::PngEncoder}, ImageEncoder, ImageError, Rgba, RgbaImage, ImageBuffer, GenericImageView, Pixel};
+use image::{codecs::{png::PngEncoder}, ImageEncoder, ImageError, Rgba, RgbaImage, ImageBuffer, Pixel};
 use image::imageops;
 
 /// Encodes an RgbaImage into PNG format and writes the result to the provided output vector.

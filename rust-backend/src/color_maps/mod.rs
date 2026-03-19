@@ -219,45 +219,74 @@ impl ColorMap {
     }
 
     fn get_color(&self, normalized_value: f64) -> Rgba<u8> {
-        // Find two scale points around normalized_value
-        for index in 0..self.colors.len() - 1 {
-            let step_lower = &self.colors[index].0;
-            let step_upper = &self.colors[index + 1].0;
+        // Binary search: find the first step whose position is > normalized_value
+        let idx = self.colors.partition_point(|(step, _)| *step <= normalized_value);
 
-            if *step_lower <= normalized_value && normalized_value <= *step_upper {
-                // fraction between step_lower and step_upper
-                let interpolation_fraction = if (*step_upper - *step_lower).abs() < f64::EPSILON {
-                    0.0
-                } else {
-                    (normalized_value - *step_lower) / (*step_upper - *step_lower)
-                };
-
-                return self.interpolate(index, index+1, interpolation_fraction);
-            }
+        if idx == 0 {
+            return self.colors[0].1;
+        }
+        if idx >= self.colors.len() {
+            return self.colors.last().unwrap().1;
         }
 
-        //return the last color if value is out of range (should never happen as we clamp earlier)
-        return self.colors.last().unwrap().1;
+        let lower = idx - 1;
+        let upper = idx;
+        let step_lower = self.colors[lower].0;
+        let step_upper = self.colors[upper].0;
+
+        let interpolation_fraction = if (step_upper - step_lower).abs() < f64::EPSILON {
+            0.0
+        } else {
+            (normalized_value - step_lower) / (step_upper - step_lower)
+        };
+
+        self.interpolate(lower, upper, interpolation_fraction)
     }
 
     fn get_color_logspace(&self, normalized_value: f64) -> Rgba<u8> {
-        for index in 0..self.log_space.len() - 1 {
-            let step_lower = self.log_space[index];
-            let step_upper = self.log_space[index + 1];
+        // Binary search: find the first log_space entry > normalized_value
+        let idx = self.log_space.partition_point(|&step| step <= normalized_value);
 
-            if step_lower <= normalized_value && normalized_value <= step_upper {
-                let interpolation_fraction = if (step_upper - step_lower).abs() < f64::EPSILON {
-                    0.0
-                } else {
-                    (normalized_value - step_lower) / (step_upper - step_lower)
-                };
-
-                return self.interpolate(index, index + 1, interpolation_fraction);
-            }
+        if idx == 0 {
+            return self.colors[0].1;
+        }
+        if idx >= self.log_space.len() {
+            return self.colors.last().unwrap().1;
         }
 
-        // Fallback: return last color (shouldn’t happen due to clamping)
-        self.colors.last().unwrap().1
+        let lower = idx - 1;
+        let upper = idx;
+        let step_lower = self.log_space[lower];
+        let step_upper = self.log_space[upper];
+
+        let interpolation_fraction = if (step_upper - step_lower).abs() < f64::EPSILON {
+            0.0
+        } else {
+            (normalized_value - step_lower) / (step_upper - step_lower)
+        };
+
+        self.interpolate(lower, upper, interpolation_fraction)
+    }
+
+    /// Build a pre-computed lookup table of `size` entries spanning [min_value, max_value].
+    /// Returns packed u32 RGBA values for direct use in the rendering loop.
+    pub fn build_lut(&self, size: usize) -> Vec<u32> {
+        let mut lut = Vec::with_capacity(size);
+        for i in 0..size {
+            let value = self.min_value + (self.max_value - self.min_value) * (i as f64 / (size - 1) as f64);
+            let rgba = self.query(value);
+            let [r, g, b, a] = rgba.0;
+            lut.push(((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32));
+        }
+        lut
+    }
+
+    pub fn get_min_value(&self) -> f64 {
+        self.min_value
+    }
+
+    pub fn get_max_value(&self) -> f64 {
+        self.max_value
     }
 
     fn interpolate(
