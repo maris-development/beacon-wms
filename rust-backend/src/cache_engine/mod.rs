@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     errors::MapError,
-    map_drawing::{LATITUDE_COLUMN, LONGITUDE_COLUMN},
+    map_drawing::{LATITUDE_COLUMN, LONGITUDE_COLUMN, VALUE_COLUMN},
     misc,
 };
 
@@ -225,15 +225,11 @@ impl InnerReprojectedDatasetCacheEngine {
             Arc::new(lat_arr)
         ];
 
-        for field in schema.fields() {
-            if field.name() != LATITUDE_COLUMN && field.name() != LONGITUDE_COLUMN
-            {
-                let new_field = Field::new(field.name(), field.data_type().clone(), true);
-                fields.push(new_field);
-
-                let col = batch.column_by_name(field.name()).unwrap();
-                columns.push(col.clone());
-            }
+        // Only keep the value column — all other columns (time, referentie, eenheid, etc.) are dropped
+        if let Some(col) = batch.column_by_name(VALUE_COLUMN) {
+            let field = schema.field_with_name(VALUE_COLUMN).unwrap();
+            fields.push(Field::new(VALUE_COLUMN, field.data_type().clone(), true));
+            columns.push(col.clone());
         }
 
         let schema = Arc::new(arrow::datatypes::Schema::new(fields));

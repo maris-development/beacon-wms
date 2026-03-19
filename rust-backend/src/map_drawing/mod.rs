@@ -80,7 +80,7 @@ pub fn get_map(
     // Read only the parquet footer to determine how many batches exist (no data pages read)
     let num_batches = data_utils::get_parquet_batch_count(layer_filepath)?;
 
-    log::info!("Reprojection cache: {}/{} entries ({:.1} MB)", REPROJECTED_DATASET_CACHE.cache_len(), crate::cache_engine::LRU_CACHE_SIZE, REPROJECTED_DATASET_CACHE.cache_memory_bytes() as f64 / 1_048_576.0);
+    // log::info!("Reprojection cache: {}/{} entries ({:.1} MB)", REPROJECTED_DATASET_CACHE.cache_len(), crate::cache_engine::LRU_CACHE_SIZE, REPROJECTED_DATASET_CACHE.cache_memory_bytes() as f64 / 1_048_576.0);
     
     profiling.mark("parquet batch count read");
 
