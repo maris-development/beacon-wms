@@ -5,9 +5,7 @@ use crate::{
     boundingbox::BoundingBox,
     data_utils,
     errors::MapError,
-    map_drawing::{
-        LATITUDE_COLUMN, LONGITUDE_COLUMN, REPROJECTED_DATASET_CACHE,
-    },
+    map_drawing::{LATITUDE_COLUMN, LONGITUDE_COLUMN},
     map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection},
     misc,
 };
@@ -44,43 +42,40 @@ pub fn get_feature_info(
         MapError::Error(e)
     })?;
 
-    let mut results: Vec<Feature> = Vec::new();
+    let mut results: Vec<Feature> = Vec::with_capacity(feature_count as usize);
     let units_per_pixel = bounding_box.get_width() / image_dimensions.0 as f64;
     let mut coordinates =
         misc::pixel_offset_to_coordinates(&reprojected_bbox, image_dimensions, click_coordinates);
 
-    {
-        // take care of clicks over the edge of the world (> +/-180 degrees)
-        let mut coordinates_wgs84 = coordinates.clone();
-
-        misc::transform_coordinates(
-            target_projection_code,
+    // take care of clicks over the edge of the world (> +/-180 degrees)
+    let mut coordinates_wgs84 = coordinates.clone();
+    misc::transform_coordinates(
+        target_projection_code,
+        source_projection_code,
+        &mut coordinates_wgs84,
+    )
+    .map_err(|e| {
+        log::error!(
+            "Could not convert coordinates {:?}, target projection: {} \n{}",
+            coordinates,
             source_projection_code,
-            &mut coordinates_wgs84,
-        )
-        .map_err(|e| {
-            log::error!(
-                "Could not convert coordinates {:?}, target projection: {} \n{}",
-                coordinates,
-                source_projection_code,
-                e
-            );
-            MapError::Error(e)
-        })?;
+            e
+        );
+        MapError::Error(e)
+    })?;
 
-        // log::info!("coordinates_wgs84: {:?} src {} trgt {}", coordinates_wgs84, target_projection_code, source_projection_code);
+    // log::info!("coordinates_wgs84: {:?} src {} trgt {}", coordinates_wgs84, target_projection_code, source_projection_code);
 
-        //if coordinates X coordinate is over 180, than subtract 360 to get the correct coordinate:
-        if coordinates_wgs84.0 > 180.0 {
-            coordinates_wgs84.0 -= 360.0;
-            coordinates.0 = coordinates_wgs84.0;
-        }
+    //if coordinates X coordinate is over 180, than subtract 360 to get the correct coordinate:
+    if coordinates_wgs84.0 > 180.0 {
+        coordinates_wgs84.0 -= 360.0;
+        coordinates.0 = coordinates_wgs84.0;
+    }
 
-        //if coordinates X coordinate is less than -180, than add 360 to get the correct coordinate:
-        if coordinates_wgs84.0 < -180.0 {
-            coordinates_wgs84.0 += 360.0;
-            coordinates.0 = coordinates_wgs84.0;
-        }
+    //if coordinates X coordinate is less than -180, than add 360 to get the correct coordinate:
+    if coordinates_wgs84.0 < -180.0 {
+        coordinates_wgs84.0 += 360.0;
+        coordinates.0 = coordinates_wgs84.0;
     }
 
     let bbox_of_interest = BoundingBox::new(
@@ -90,6 +85,14 @@ pub fn get_feature_info(
         coordinates.1 + (units_per_pixel * PIXEL_BUFFER),
         target_projection_code,
     );
+
+    let bbox_of_interest_wgs84 = bbox_of_interest.reproject(source_projection_code).map_err(|e| {
+        log::error!(
+            "Could not reproject bbox_of_interest to WGS84: {}",
+            e
+        );
+        MapError::Error(e)
+    })?;
 
     if !bbox_of_interest.in_bbox(coordinates, None) {
         log::error!(
@@ -102,52 +105,11 @@ pub fn get_feature_info(
 
     let reader = data_utils::open_parquet_reader(query_layer, layer_filepath)?;
 
-    for (i, batch) in reader.enumerate() {
-        
-        let record_batch_name = format!("{}_{}_{}", query_layer, target_projection_code, i);
-
-        let batch = match batch {
-            Ok(batch) => {
-
-                if let Some(projected_batch) =
-                    REPROJECTED_DATASET_CACHE.get_projection_applied_batch(target_projection_code, &record_batch_name)
-                {
-                    projected_batch
-                } else {
-
-
-                    // Reproject batch if needed:
-                    let res = REPROJECTED_DATASET_CACHE.apply_projection_to_batch(
-                        source_projection_code,
-                        target_projection_code,
-                        &record_batch_name,
-                        batch
-                    );
-
-                    if res.is_err() {
-                        log::error!(
-                            "Could not apply projection to batch: {}",
-                            res.err().unwrap()
-                        );
-                    }
-
-                    // log::info!(
-                    //     "Reprojected batch: {} with projection: {}",
-                    //     record_batch_name,
-                    //     target_projection_code
-                    // );
-
-                    REPROJECTED_DATASET_CACHE
-                        .get_projection_applied_batch(target_projection_code, &record_batch_name)
-                        .unwrap()
-                }
-            }
-
-            Err(e) => {
-                log::error!("Error reading batch: {}", e);
-                return Err(MapError::Error(format!("Error reading batch: {}", e)));
-            }
-        };
+    for (_, batch) in reader.enumerate() {
+        let batch = batch.map_err(|e| {
+            log::error!("Error reading batch: {}", e);
+            MapError::Error(format!("Error reading batch: {}", e))
+        })?;
 
         let latitude_column = batch
             .column_by_name(LATITUDE_COLUMN)
@@ -170,7 +132,7 @@ pub fn get_feature_info(
         for (lat, lng) in zipped_iterator {
             row_idx += 1;
             
-            if results.len() >= feature_count as usize {
+            if results.len() == results.capacity(){
                 break;
             }
 
@@ -184,9 +146,18 @@ pub fn get_feature_info(
 
             // log::info!("y: {}, x: {}", lat, lng);
 
-            if bbox_of_interest.in_bbox((lng, lat), None) {
-                //reproject coordinates to target projection for the response.
+            if bbox_of_interest_wgs84.in_bbox((lng, lat), None) {
+                // Forward-project the matched WGS84 point to target CRS for the response geometry.
                 let mut _coordinates = (lng, lat);
+                misc::transform_coordinates(
+                    source_projection_code,
+                    target_projection_code,
+                    &mut _coordinates,
+                )
+                .map_err(|e| {
+                    log::error!("Could not reproject feature coordinates: {}", e);
+                    MapError::Error(e)
+                })?;
 
                 let mut _properties: serde_json::Map<String, Value> = Map::new();
 
@@ -220,8 +191,8 @@ pub fn get_feature_info(
                 }
 
                 let feature = GetFeatureInfoCollection::create_point_feature(
-                    lng,
-                    lat,
+                    lng, // _coordinates.0,
+                    lat, //_coordinates.1,
                     Some(_properties.clone()),
                 );
 

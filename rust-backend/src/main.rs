@@ -434,17 +434,17 @@ async fn get_feature_info(
         }
     }
 
-    let mut feature_collection_properties: serde_json::map::Map<String, serde_json::Value> =
-        serde_json::map::Map::new();
+    // let mut feature_collection_properties: serde_json::map::Map<String, serde_json::Value> =
+    //     serde_json::map::Map::new();
 
-    feature_collection_properties.insert(
-        String::from("crs"),
-        serde_json::Value::from(get_feature_info_params.crs.as_str()),
-    );
+    // feature_collection_properties.insert(
+    //     String::from("crs"),
+    //     serde_json::Value::from(get_feature_info_params.crs.as_str()),
+    // );
 
     let result = GetFeatureInfoCollection::new(
         feature_info_results,
-        Some(serde_json::Value::from(feature_collection_properties)),
+        None // Some(serde_json::Value::from(feature_collection_properties)),
     );
 
     match &get_feature_info_params.info_format {

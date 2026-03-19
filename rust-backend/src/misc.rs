@@ -149,6 +149,15 @@ pub fn transform_coordinates(
         },
     )?;
 
+    // proj4rs outputs radians for degree-based target CRS, convert back to degrees
+    match target_projection_code {
+        "EPSG:4326" | "EPSG:4269" | "EPSG:4322" | "EPSG:4283"
+        | "EPSG:4214" | "EPSG:4231" | "EPSG:3995" | "EPSG:3031" => {
+            rad_to_deg(coordinates);
+        }
+        _ => {}
+    }
+
     Ok(())
 }
 
