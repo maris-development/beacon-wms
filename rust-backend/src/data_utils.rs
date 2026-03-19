@@ -63,3 +63,16 @@ pub fn open_parquet_reader(layer: &str, layer_filepath: &str) -> Result<Box<dyn 
     Ok(reader)
 }
 
+/// Read only the parquet footer to determine how many record batches the file will produce.
+/// No data pages are read, so this is very cheap (~1ms).
+pub fn get_parquet_batch_count(layer_filepath: &str) -> Result<usize, MapError> {
+    let file = File::open(layer_filepath).map_err(|e| {
+        MapError::Error(format!("Could not open layer file for metadata: {}", e))
+    })?;
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| {
+        MapError::Error(format!("Could not read parquet metadata: {}", e))
+    })?;
+    let total_rows = builder.metadata().file_metadata().num_rows() as usize;
+    Ok((total_rows + PARQUET_BATCH_SIZE - 1) / PARQUET_BATCH_SIZE)
+}
+

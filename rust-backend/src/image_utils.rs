@@ -1,16 +1,17 @@
-use image::{codecs::{png::PngEncoder}, ImageEncoder, ImageError, Rgba, RgbaImage, ImageBuffer, Pixel};
+use image::{ImageBuffer, ImageEncoder, ImageError, Pixel, Rgba, RgbaImage, codecs::png::{CompressionType, FilterType, PngEncoder}};
 use image::imageops;
 
 /// Encodes an RgbaImage into PNG format and writes the result to the provided output vector.
 /// The image is encoded with 8 bits per channel.
 pub fn rgba_image_to_png(image: &RgbaImage, output_vec: &mut Vec<u8>) -> Result<(), ImageError> {
     let mut buff = std::io::Cursor::new(output_vec);
-    PngEncoder::new(&mut buff).write_image(
-        image.as_raw(),
-        image.width(),
-        image.height(),
-        image::ColorType::Rgba8,
-    )
+    PngEncoder::new_with_quality(&mut buff, CompressionType::Fast, FilterType::Sub)
+        .write_image(
+            image.as_raw(),
+            image.width(),
+            image.height(),
+            image::ColorType::Rgba8,
+        )
 }
 
 pub fn unpack_rgba(packed: u32) -> Rgba<u8> {

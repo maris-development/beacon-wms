@@ -1,4 +1,4 @@
-use arrow::array::{AsArray, PrimitiveArray};
+use arrow::array::{AsArray, PrimitiveArray, RecordBatch};
 use arrow::datatypes::{Float64Type, UInt32Type};
 use boundingbox::BoundingBox;
 use image::{GenericImage, Pixel, Rgba, RgbaImage};
@@ -77,63 +77,80 @@ pub fn get_map(
     let cm_min = color_map.get_min_value();
     let cm_range = color_map.get_max_value() - cm_min;
 
-    let reader = data_utils::open_parquet_reader(layer, layer_filepath)?;
+    // Read only the parquet footer to determine how many batches exist (no data pages read)
+    let num_batches = data_utils::get_parquet_batch_count(layer_filepath)?;
 
-    profiling.mark("parquet reader created");
+    log::info!("Reprojection cache: {}/{} entries ({:.1} MB)", REPROJECTED_DATASET_CACHE.cache_len(), crate::cache_engine::LRU_CACHE_SIZE, REPROJECTED_DATASET_CACHE.cache_memory_bytes() as f64 / 1_048_576.0);
+    
+    profiling.mark("parquet batch count read");
 
-    for (i, batch) in reader.enumerate() {
+    // Warm-cache path: if all reprojected batches are cached, skip parquet I/O entirely
+    let resolved_batches: Vec<RecordBatch> = if (0..num_batches).all(|i| {
+        REPROJECTED_DATASET_CACHE.is_batch_cached(
+            target_projection_code,
+            &format!("{}_{}_{}", layer, target_projection_code, i),
+        )
+    }) {
+        profiling.mark("all batches cached - skipping parquet I/O");
+        (0..num_batches)
+            .map(|i| {
+                REPROJECTED_DATASET_CACHE
+                    .get_projection_applied_batch(
+                        target_projection_code,
+                        &format!("{}_{}_{}", layer, target_projection_code, i),
+                    )
+                    .expect("cache entry disappeared after warm check")
+            })
+            .collect()
+    } else {
+        let reader = data_utils::open_parquet_reader(layer, layer_filepath)?;
+        profiling.mark("parquet reader created");
+        let mut batches = Vec::with_capacity(num_batches);
+        for (i, batch) in reader.enumerate() {
+            let record_batch_name = format!("{}_{}_{}", layer, target_projection_code, i);
+            profiling.mark(&format!("start reading batch {}", record_batch_name));
+            let batch = match batch {
+                Ok(batch) => {
+                    if let Some(projected_batch) =
+                        REPROJECTED_DATASET_CACHE.get_projection_applied_batch(target_projection_code, &record_batch_name)
+                    {
+                        projected_batch
+                    } else {
+                        profiling.mark(&format!("reprojecting {}", record_batch_name));
+                        // Reproject batch if needed:
+                        let res = REPROJECTED_DATASET_CACHE.apply_projection_to_batch(
+                            source_projection_code,
+                            target_projection_code,
+                            &record_batch_name,
+                            batch,
+                        );
+                        if res.is_err() {
+                            log::error!(
+                                "Could not apply projection to batch: {}",
+                                res.err().unwrap()
+                            );
+                        }
+                        profiling.mark(&format!("reprojecting done {}", record_batch_name));
+                        REPROJECTED_DATASET_CACHE
+                            .get_projection_applied_batch(target_projection_code, &record_batch_name)
+                            .unwrap()
+                    }
+                }
+                Err(e) => {
+                    log::error!("Error reading batch: {}", e);
+                    return Err(MapError::Error(format!("Error reading batch: {}", e)));
+                }
+            };
+            profiling.mark(&format!("done reading batch {}", record_batch_name));
+            batches.push(batch);
+        }
+        batches
+    };
 
-
+    // Draw all resolved batches
+    for (i, batch) in resolved_batches.into_iter().enumerate() {
         let record_batch_name = format!("{}_{}_{}", layer, target_projection_code, i);
 
-        profiling.mark(&format!("start reading batch {}", record_batch_name));
-
-        let batch = match batch {
-            Ok(batch) => {
-
-                if let Some(projected_batch) =
-                    REPROJECTED_DATASET_CACHE.get_projection_applied_batch(target_projection_code, &record_batch_name)
-                {
-                    projected_batch
-                } else {
-                    profiling.mark(&format!("reprojecting {}", record_batch_name));
-
-
-                    // Reproject batch if needed:
-                    let res = REPROJECTED_DATASET_CACHE.apply_projection_to_batch(
-                        source_projection_code,
-                        target_projection_code,
-                        &record_batch_name,
-                        batch
-                    );
-
-                    if res.is_err() {
-                        log::error!(
-                            "Could not apply projection to batch: {}",
-                            res.err().unwrap()
-                        );
-                    }
-
-                    // log::info!(
-                    //     "Reprojected batch: {} with projection: {}",
-                    //     record_batch_name,
-                    //     target_projection_code
-                    // );
-
-                    profiling.mark(&format!("reprojecting done {}", record_batch_name));
-                    
-                    REPROJECTED_DATASET_CACHE
-                        .get_projection_applied_batch(target_projection_code, &record_batch_name)
-                        .unwrap()
-                }
-            }
-
-            Err(e) => {
-                log::error!("Error reading batch: {}", e);
-                return Err(MapError::Error(format!("Error reading batch: {}", e)));
-            }
-        };
-        
         let latitude_column = batch
             .column_by_name(LATITUDE_COLUMN)
             .unwrap()
@@ -151,9 +168,6 @@ pub fn get_map(
             .unwrap()
             .as_primitive::<Float64Type>();
 
-
-        profiling.mark(&format!("done reading batch {}", record_batch_name));
-
         let color_values: PrimitiveArray<UInt32Type> = value_column.unary(|x| {
             // O(1) LUT lookup instead of per-value interpolation
             let normalized = ((x - cm_min) / cm_range).clamp(0.0, 1.0);
@@ -161,16 +175,12 @@ pub fn get_map(
             color_lut[idx]
         });
 
-        
         profiling.mark(&format!("done colormapping batch {}", record_batch_name));
-
 
         let color_values = color_values.into_iter();
         let zipped_iterator = latitude_column.zip(longitude_column).zip(color_values);
 
-
         profiling.mark(&format!("start drawing batch {}", record_batch_name));
-                
 
         for ((lat, lng), color) in zipped_iterator {
             if lat.is_none() || lng.is_none() || color.is_none() {

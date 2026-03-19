@@ -60,6 +60,17 @@ impl ReprojectedDatasetCacheEngine {
         Ok(())
     }
 
+    pub fn is_batch_cached(
+        &self,
+        projection: impl AsRef<str>,
+        record_batch_name: impl AsRef<str>,
+    ) -> bool {
+        self.inner
+            .read()
+            .unwrap()
+            .projection_applied_batch_exists(projection.as_ref(), record_batch_name.as_ref())
+    }
+
     pub fn get_projection_applied_batch(
         &self,
         projection: impl AsRef<str>,
@@ -69,6 +80,19 @@ impl ReprojectedDatasetCacheEngine {
             .read()
             .unwrap()
             .get_projection_applied_batch(projection.as_ref(), record_batch_name.as_ref())
+    }
+
+    pub fn cache_len(&self) -> usize {
+        self.inner.read().unwrap().projections.read().unwrap().len()
+    }
+
+    pub fn cache_memory_bytes(&self) -> usize {
+        self.inner.read().unwrap().projections.read().unwrap()
+            .iter()
+            .map(|(_, batch)| {
+                batch.columns().iter().map(|col| col.get_array_memory_size()).sum::<usize>()
+            })
+            .sum()
     }
 }
 
