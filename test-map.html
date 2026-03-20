@@ -27,6 +27,32 @@
     #toolbar label { font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
     #toolbar input[type=checkbox] { cursor: pointer; }
     #toolbar select { font-size: 12px; padding: 2px 6px; border-radius: 3px; border: none; }
+    #layer-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .layer-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .layer-control label {
+      white-space: nowrap;
+    }
+    .layer-controls-msg {
+      font-size: 12px;
+      opacity: 0.85;
+    }
+    .layer-control input[type=text] {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: none;
+      width: 220px;
+      font-family: monospace;
+    }
 
     #container { display: flex; flex: 1; overflow: hidden; }
 
@@ -92,26 +118,9 @@
 <div id="toolbar">
   <h1>Beacon WMS</h1>
 
-  <label>
-    <input type="checkbox" id="toggle-wadar" checked />
-    WADAR Watertemperatuur 2023
-  </label>
-  <select title="Select a style" id="style-wadar">
-    <option value="">default</option>
-    <option value="solid_blue">solid_blue</option>
-    <option value="thermal">thermal</option>
-    <option value="rainbow">rainbow</option>
-  </select>
-
-  <label>
-    <input type="checkbox" id="toggle-aquadesk" />
-    AQUADESK Benthosmonitoring
-  </label>
-  <select title="Select a style" id="style-aquadesk">
-    <option value="">default</option>
-    <option value="solid_green">solid_green</option>
-    <option value="rainbow">rainbow</option>
-  </select>
+  <div id="layer-controls">
+    <span class="layer-controls-msg">Loading layers from GetCapabilities…</span>
+  </div>
 
   <label title="Click on the map to query features at that location">
     <input type="checkbox" id="toggle-query" />
@@ -135,13 +144,10 @@
 <div id="status-bar">Ready</div>
 
 <script>
-  const WMS_URL  = 'http://localhost:3000/workspaces/ihm/wms';
-  const WORKSPACE = 'ihm';
-
-  const LAYERS = {
-    wadar:     { id: 'wadar-2023',                                   styleEl: 'style-wadar',    toggleEl: 'toggle-wadar'    },
-    aquadesk:  { id: 'aquadesk-noordzee-benthosmonitoring-1951-2025', styleEl: 'style-aquadesk', toggleEl: 'toggle-aquadesk' },
-  };
+  const WMS_URL  = 'http://localhost:3000/workspaces/default/wms';
+  const layerControls = document.getElementById('layer-controls');
+  const layerConfigs = [];
+  const wmsLayers = new Map();
 
   // ── Map setup ────────────────────────────────────────────────
   const map = L.map('map', {
@@ -157,45 +163,173 @@
   }).addTo(map);
 
   // ── WMS layers ───────────────────────────────────────────────
-  const wmsOptions = (layerId, style) => ({
-    layers:      layerId,
-    styles:      style || '',
-    format:      'image/png',
-    transparent: true,
-    version:     '1.3.0',
-    attribution: 'Beacon WMS',
-  });
+  const wmsOptions = (layerId, style, viewparams) => {
+    const opts = {
+      layers:      layerId,
+      styles:      style || '',
+      format:      'image/png',
+      transparent: true,
+      version:     '1.3.0',
+      attribution: 'Beacon WMS',
+    };
+    if (viewparams) opts.viewparams = viewparams;
+    return opts;
+  };
 
-  // Leaflet WMS layers (one per beacon layer)
-  const wmsLayers = {};
-  for (const [key, cfg] of Object.entries(LAYERS)) {
-    const style = document.getElementById(cfg.styleEl).value;
-    wmsLayers[key] = L.tileLayer.wms(WMS_URL, wmsOptions(cfg.id, style));
-  }
+  const directChildrenByName = (node, localName) =>
+    Array.from(node.children).filter(child => child.localName === localName);
 
-  // Add checked layers on start
-  for (const [key, cfg] of Object.entries(LAYERS)) {
-    if (document.getElementById(cfg.toggleEl).checked) {
-      wmsLayers[key].addTo(map);
+  const firstDirectChildText = (node, localName) => {
+    const child = directChildrenByName(node, localName)[0];
+    return child ? child.textContent.trim() : '';
+  };
+
+  function extractLeafLayers(layerEl, out) {
+    const childLayers = directChildrenByName(layerEl, 'Layer');
+    const name = firstDirectChildText(layerEl, 'Name');
+    const title = firstDirectChildText(layerEl, 'Title');
+
+    if (name && childLayers.length === 0) {
+      const styles = directChildrenByName(layerEl, 'Style')
+        .map(styleEl => firstDirectChildText(styleEl, 'Name'))
+        .filter(Boolean);
+
+      out.push({
+        id: name,
+        title: title || name,
+        styles,
+      });
+      return;
+    }
+
+    for (const child of childLayers) {
+      extractLeafLayers(child, out);
     }
   }
 
-  // ── Toolbar controls ─────────────────────────────────────────
-  for (const [key, cfg] of Object.entries(LAYERS)) {
-    document.getElementById(cfg.toggleEl).addEventListener('change', e => {
-      e.target.checked ? wmsLayers[key].addTo(map) : map.removeLayer(wmsLayers[key]);
+  function buildLayerControls(capabilityLayers) {
+    layerConfigs.length = 0;
+    layerControls.innerHTML = '';
+
+    capabilityLayers.forEach((layer, idx) => {
+      const control = document.createElement('div');
+      control.className = 'layer-control';
+
+      const toggle = document.createElement('input');
+      toggle.type = 'checkbox';
+      toggle.id = `toggle-layer-${idx}`;
+      toggle.checked = idx === 0;
+
+      const label = document.createElement('label');
+      label.setAttribute('for', toggle.id);
+      label.textContent = layer.title;
+
+      const styleSelect = document.createElement('select');
+      styleSelect.id = `style-layer-${idx}`;
+      styleSelect.title = `Select style for ${layer.title}`;
+
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'default';
+      styleSelect.append(defaultOption);
+
+      for (const styleName of layer.styles) {
+        const option = document.createElement('option');
+        option.value = styleName;
+        option.textContent = styleName;
+        styleSelect.append(option);
+      }
+
+      const viewparamsInput = document.createElement('input');
+      viewparamsInput.type = 'text';
+      viewparamsInput.id = `viewparams-layer-${idx}`;
+      viewparamsInput.placeholder = 'viewparams  e.g. year:2021;depth:0,10';
+      viewparamsInput.title = 'VIEWPARAMS (key:value pairs separated by ;)';
+
+      control.append(toggle, label, styleSelect, viewparamsInput);
+      layerControls.append(control);
+
+      const cfg = {
+        id: layer.id,
+        toggleEl: toggle,
+        styleEl: styleSelect,
+        viewparamsEl: viewparamsInput,
+      };
+      layerConfigs.push(cfg);
+
+      const tile = L.tileLayer.wms(WMS_URL, wmsOptions(cfg.id, styleSelect.value, viewparamsInput.value));
+      wmsLayers.set(cfg.id, tile);
+      if (toggle.checked) {
+        tile.addTo(map);
+      }
+
+      toggle.addEventListener('change', () => {
+        const current = wmsLayers.get(cfg.id);
+        if (!current) return;
+        toggle.checked ? current.addTo(map) : map.removeLayer(current);
+      });
+
+      function refreshLayer() {
+        const current = wmsLayers.get(cfg.id);
+        if (current && map.hasLayer(current)) {
+          map.removeLayer(current);
+        }
+
+        const next = L.tileLayer.wms(WMS_URL, wmsOptions(cfg.id, styleSelect.value, viewparamsInput.value));
+        wmsLayers.set(cfg.id, next);
+        if (toggle.checked) {
+          next.addTo(map);
+        }
+      }
+
+      styleSelect.addEventListener('change', refreshLayer);
+
+      let viewparamsTimer;
+      viewparamsInput.addEventListener('input', () => {
+        clearTimeout(viewparamsTimer);
+        viewparamsTimer = setTimeout(refreshLayer, 600);
+      });
+      viewparamsInput.addEventListener('change', refreshLayer);
     });
 
-    document.getElementById(cfg.styleEl).addEventListener('change', e => {
-      if (map.hasLayer(wmsLayers[key])) {
-        map.removeLayer(wmsLayers[key]);
-      }
-      wmsLayers[key] = L.tileLayer.wms(WMS_URL, wmsOptions(cfg.id, e.target.value));
-      if (document.getElementById(cfg.toggleEl).checked) {
-        wmsLayers[key].addTo(map);
-      }
-    });
+    if (layerConfigs.length === 0) {
+      layerControls.innerHTML = '<span class="layer-controls-msg">No named layers found in GetCapabilities.</span>';
+    }
   }
+
+  async function loadCapabilitiesLayers() {
+    const params = new URLSearchParams({
+      SERVICE: 'WMS',
+      VERSION: '1.3.0',
+      REQUEST: 'GetCapabilities',
+    });
+
+    const response = await fetch(`${WMS_URL}?${params}`);
+    if (!response.ok) {
+      throw new Error(`GetCapabilities failed with status ${response.status}`);
+    }
+
+    const xmlText = await response.text();
+    const xmlDoc = new DOMParser().parseFromString(xmlText, 'text/xml');
+
+    if (xmlDoc.querySelector('parsererror')) {
+      throw new Error('Invalid XML in GetCapabilities response');
+    }
+
+    const capability = Array.from(xmlDoc.getElementsByTagName('*')).find(node => node.localName === 'Capability');
+    const capabilityRootLayer = capability ? directChildrenByName(capability, 'Layer')[0] : null;
+    if (!capabilityRootLayer) {
+      throw new Error('No Capability/Layer element found in GetCapabilities response');
+    }
+
+    const layers = [];
+    extractLeafLayers(capabilityRootLayer, layers);
+    buildLayerControls(layers);
+  }
+
+  loadCapabilitiesLayers().catch(err => {
+    layerControls.innerHTML = `<span class="layer-controls-msg">Could not load layers: ${err.message}</span>`;
+  });
 
   // ── GetFeatureInfo ───────────────────────────────────────────
   const queryToggle  = document.getElementById('toggle-query');
@@ -235,9 +369,10 @@
     const bbox   = `${swProj.x},${swProj.y},${neProj.x},${neProj.y}`;
 
     // Collect active queryable layers
-    const activeLayers = Object.entries(LAYERS)
-      .filter(([key]) => document.getElementById(LAYERS[key].toggleEl).checked)
-      .map(([, cfg]) => cfg.id);
+    const activeConfigs = layerConfigs.filter(cfg => cfg.toggleEl.checked);
+    const activeLayers = activeConfigs.map(cfg => cfg.id);
+    const activeStyles = activeConfigs.map(cfg => cfg.styleEl.value || '');
+    const activeViewparams = activeConfigs.map(cfg => cfg.viewparamsEl.value || '').join(';');
 
     if (activeLayers.length === 0) {
       infoContent.innerHTML = '<p class="no-features">No layers are currently visible.</p>';
@@ -261,8 +396,10 @@
       I:            Math.round(point.x).toString(),
       J:            Math.round(point.y).toString(),
       FEATURE_COUNT: '10',
-      STYLES:       '',
+      STYLES:       activeStyles.join(','),
     });
+
+    if (activeViewparams) params.set('VIEWPARAMS', activeViewparams);
 
     try {
       const resp = await fetch(`${WMS_URL}?${params}`);

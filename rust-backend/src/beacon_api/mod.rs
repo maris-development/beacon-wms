@@ -62,12 +62,17 @@ pub async fn query(
         }
 
         StatusCode::NO_CONTENT => {
+            log::info!("No content found for query");
             return Err(("No content found for query".to_string(), 204));
         }
 
         _ => {
             let status = response.status();
             let content = response.text().await.map_err(|e| (e.to_string(), 500))?;
+            log::error!(
+                "Beacon query failed with status code: {}: \n{}",
+                status, content
+            );
             return Err((
                 format!(
                     "Beacon query failed with status code: {}: \n{}",

@@ -55,6 +55,16 @@ fn query_file(layer_filepath: String, layer_config: LayerConfig) -> impl Future<
         // Log the layer and filepath
         log::info!("Updating layer at path: {:?}", &layer_filepath);
 
+        //check if file exists and is less than one day old
+        if let Ok(metadata) = std::fs::metadata(&layer_filepath) {
+            if let Ok(modified) = metadata.modified() {
+                if modified.elapsed().unwrap_or(std::time::Duration::from_secs(0)) < std::time::Duration::from_secs(24 * 60 * 60) {
+                    log::info!("File {:?} is less than one day old, skipping update", &layer_filepath);
+                    return File::open(layer_filepath).map_err(|e| format!("Error opening file: {:?}", e));
+                }
+            }
+        }
+
         // run query
         let instance_url = &layer_config.config.instance_url;
         let auth_token = &layer_config.config.token;

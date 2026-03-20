@@ -23,7 +23,7 @@
                         "available_viewparams": {
                             "year": {"type": "numeric", "format": "yyyy"},
                             "depth": {"type": "numeric", "format": ["min", "max"]},
-                            "bbox": {"type": "numeric", "format": ["minlon", "minlat", "maxlon", "maxlat"]}
+                            "bbox": {"type": "array", "format": ["minlon", "minlat", "maxlon", "maxlat"]}
                         },
                         "assigned_viewparams": {
                             "year": 2021,
@@ -32,7 +32,7 @@
                         },
                         "default_style": "thermal",
                         "instance_url": "https://beacon-cdi.maris.nl/",
-                        "token": "",
+                        "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczpcL1wvZGF0YS5ibHVlLWNsb3VkLm9yZyIsImF1ZCI6Imh0dHBzOlwvXC9kYXRhLmJsdWUtY2xvdWQub3JnIiwiaWF0IjoxNzY5NjAxMjYyLCJleHAiOjE4MDExMzcyNjIsInVzciI6MzIsImlkIjoicGF1bEBtYXJpcy5ubCIsImVwX29yZ2FuaXNhdGlvbiI6Ik1BUklTIn0.t3P2PAewHYy4JHdyu0MWnyUzS3MtIZrI5vdAz2tuGmI",
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"TEMPPR01","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": -5.0,
                         "max_value": 40.0,

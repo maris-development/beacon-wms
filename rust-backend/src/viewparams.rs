@@ -66,6 +66,7 @@ pub async fn assign_viewparams(
     assigned: &mut HashMap<String, Value>,
     input: &HashMap<String, Value>,
 ) -> Result<(), (StatusCode, String)> {
+
     for (param, value) in input {
         // Parameter must exist in allowed config
         let expected = match allowed.get(param) {
@@ -78,21 +79,29 @@ pub async fn assign_viewparams(
             }
         };
 
-        // Validate type
-        let valid = match expected {
-            Value::String(t) if t == "numeric" => value.is_number(),
-            Value::String(t) if t == "string" => value.is_string(),
-            Value::String(t) if t == "bool" => value.is_boolean(),
-            Value::Array(expected_arr) => {
-                if let Some(arr) = value.as_array() {
-                    arr.len() == expected_arr.len()
-                        && arr.iter().all(|v| v.is_number())
-                } else {
-                    false
-                }
-            }
+        let valid = match expected.get("type") {
+            Some(Value::String(t)) if t == "numeric" => value.is_number(),
+            Some(Value::String(t)) if t == "string" => value.is_string(),
+            Some(Value::String(t)) if t == "bool" => value.is_boolean(),
+            Some(Value::String(t)) if t == "array" => value.is_array(),
             _ => false,
         };
+
+        // Validate type
+        // let valid = match expected {
+        //     Value::String(t) if t == "numeric" => value.is_number(),
+        //     Value::String(t) if t == "string" => value.is_string(),
+        //     Value::String(t) if t == "bool" => value.is_boolean(),
+        //     Value::Array(expected_arr) => {
+        //         if let Some(arr) = value.as_array() {
+        //             arr.len() == expected_arr.len()
+        //                 && arr.iter().all(|v| v.is_number())
+        //         } else {
+        //             false
+        //         }
+        //     }
+        //     _ => false,
+        // };
 
         if !valid {
             return Err((

@@ -129,6 +129,7 @@ export class BeaconWmsService {
             exceptions: queryParameters['exceptions'], // XML or JSON
             time: queryParameters['time'], // optional, not implemented yet
             elevation: queryParameters['elevation'],  //optional, not implemented yet
+
             viewparams: queryParameters['viewparams'], // optional, not implemented yet
         };
 
@@ -196,6 +197,7 @@ export class BeaconWmsService {
         // if (wmsGetMapParams.exceptions) url.searchParams.append("exceptions", wmsGetMapParams.exceptions);
         if (wmsGetMapParams.time) url.searchParams.append("time", wmsGetMapParams.time);
         if (wmsGetMapParams.elevation) url.searchParams.append("elevation", wmsGetMapParams.elevation);
+        if (wmsGetMapParams.viewparams) url.searchParams.append("viewparams", wmsGetMapParams.viewparams);
 
         
         fetch(url)

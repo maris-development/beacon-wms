@@ -183,10 +183,14 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
         .cloned()
         .collect::<Vec<config::LayerConfig>>();
 
-    viewparams::assign_viewparams_in_config(&mut layers_configs, &requested_viewparams)
-        .await.map_err(|(status, msg)| {
-            return (status, msg).into_response();
-        }).unwrap();
+    match viewparams::assign_viewparams_in_config(&mut layers_configs, &requested_viewparams)
+        .await {
+            Ok(_) => {},
+            Err((status, msg)) => {
+                log::error!("Error assigning viewparams: {}", msg);
+                return (status, msg).into_response()
+            }
+        }
 
 
     let mut styles = match &get_map_params.styles {
