@@ -1,4 +1,5 @@
 use arrow::array::{AsArray, PrimitiveArray, RecordBatch};
+use arrow::compute::CastOptions;
 use arrow::datatypes::{Float64Type, UInt32Type};
 use boundingbox::BoundingBox;
 use image::{GenericImage, Pixel, Rgba, RgbaImage};
@@ -11,6 +12,7 @@ use crate::data_utils::{self};
 use crate::errors::MapError;
 use crate::request_profiling::RequestProfiling;
 use crate::{boundingbox, image_utils, misc};
+use std::fs::File;
 
 lazy_static! {
     pub static ref REPROJECTED_DATASET_CACHE: ReprojectedDatasetCacheEngine =
@@ -33,7 +35,8 @@ pub fn get_map(
     layer: &str,
     color_map: ColorMap,
     crs: &str,
-    layer_filepath: &str,
+    layer_filepath: String,
+    file: File,
     icon_shape: &str,
     profiling: &mut RequestProfiling
 ) -> Result<usize, MapError> {
@@ -78,7 +81,7 @@ pub fn get_map(
     let cm_range = color_map.get_max_value() - cm_min;
 
     // Read only the parquet footer to determine how many batches exist (no data pages read)
-    let num_batches = data_utils::get_parquet_batch_count(layer_filepath)?;
+    let num_batches = data_utils::get_parquet_batch_count(&layer_filepath, file.try_clone()?)?;
 
     // log::info!("Reprojection cache: {}/{} entries ({:.1} MB)", REPROJECTED_DATASET_CACHE.cache_len(), crate::cache_engine::LRU_CACHE_SIZE, REPROJECTED_DATASET_CACHE.cache_memory_bytes() as f64 / 1_048_576.0);
     
@@ -103,7 +106,8 @@ pub fn get_map(
             })
             .collect()
     } else {
-        let reader = data_utils::open_parquet_reader(layer, layer_filepath)?;
+        let reader = data_utils::parquet_reader(&layer_filepath, file)?;
+
         profiling.mark("parquet reader created");
         let mut batches = Vec::with_capacity(num_batches);
         for (i, batch) in reader.enumerate() {
@@ -153,20 +157,26 @@ pub fn get_map(
 
         let latitude_column = batch
             .column_by_name(LATITUDE_COLUMN)
-            .unwrap()
-            .as_primitive::<Float64Type>();
+            .unwrap();
+        let latitude_casted_f64 = arrow::compute::cast_with_options(latitude_column, &arrow::datatypes::DataType::Float64, &CastOptions::default()).unwrap();
+        let latitude_column = latitude_casted_f64.as_primitive::<Float64Type>().clone();
         let latitude_column = latitude_column.into_iter();
 
         let longitude_column = batch
             .column_by_name(LONGITUDE_COLUMN)
-            .unwrap()
-            .as_primitive::<Float64Type>();
+            .unwrap();
+        let longitude_column_f64 = arrow::compute::cast_with_options(longitude_column, &arrow::datatypes::DataType::Float64, &CastOptions::default()).unwrap();
+        let longitude_column = longitude_column_f64.as_primitive::<Float64Type>().clone();
         let longitude_column = longitude_column.into_iter();
 
         let value_column = batch
             .column_by_name(VALUE_COLUMN)
-            .unwrap()
-            .as_primitive::<Float64Type>();
+            .unwrap();
+        let value_column_f64 = arrow::compute::cast_with_options(value_column, &arrow::datatypes::DataType::Float64, &CastOptions::default()).unwrap();
+        let value_column = value_column_f64.as_primitive::<Float64Type>().clone();
+
+
+        profiling.mark(&format!("done reading batch {}", record_batch_name));
 
         let color_values: PrimitiveArray<UInt32Type> = value_column.unary(|x| {
             // O(1) LUT lookup instead of per-value interpolation

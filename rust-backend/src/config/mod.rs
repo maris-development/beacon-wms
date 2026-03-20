@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigFile {
@@ -23,7 +24,7 @@ pub struct WorkspaceConfig {
     pub layers: Vec<LayerConfig>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LayerConfig {
     pub id: String,
     pub name: String,
@@ -31,12 +32,17 @@ pub struct LayerConfig {
     pub config: LayerInnerConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LayerInnerConfig {
+    pub available_viewparams: Option<HashMap<String, Value>>,
+
+    // #[serde(skip)]
+    pub assigned_viewparams: Option<HashMap<String, Value>>,
+
     pub default_style: Option<String>,
     pub instance_url: String,
     pub token: String,
-    pub query: HashMap<String, serde_json::Value>,
+    pub query: HashMap<String, Value>,
     pub min_value: Option<f64>,
     pub max_value: Option<f64>,
     pub shape: Option<String>,

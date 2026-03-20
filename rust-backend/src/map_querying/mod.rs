@@ -1,5 +1,6 @@
 use arrow::{array::{AsArray}, datatypes::Float64Type};
 use serde_json::{Map, Value};
+use std::fs::File;
 
 use crate::{
     boundingbox::BoundingBox,
@@ -18,10 +19,10 @@ pub fn get_feature_info(
     image_dimensions: (u32, u32),
     click_coordinates: (u32, u32),
     bounding_box: BoundingBox,
-    query_layer: &str,
     crs: &str,
     feature_count: u32,
     layer_filepath: &str,
+    file: File
 ) -> Result<Vec<Feature>, MapError> {
     let source_projection_code = "EPSG:4326";
     let target_projection_code = crs;
@@ -103,7 +104,7 @@ pub fn get_feature_info(
         return Ok(Vec::new());
     }
 
-    let reader = data_utils::open_parquet_reader(query_layer, layer_filepath)?;
+    let reader = data_utils::parquet_reader(layer_filepath, file)?;
 
     for (_, batch) in reader.enumerate() {
         let batch = batch.map_err(|e| {

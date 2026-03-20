@@ -76,7 +76,5 @@ export class AdminService {
                     status: err.response?.status,
                 });
             });
-
-
     }
 }

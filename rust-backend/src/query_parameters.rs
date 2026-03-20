@@ -21,6 +21,8 @@ pub struct GetMapRequestParameters {
     pub exceptions: Option<String>,
     pub time: Option<String>,
     pub elevation: Option<String>,
+
+    pub viewparams: Option<String> // jaar:2020;otherparam:value
 }
 
 #[derive(Deserialize, Debug)]
@@ -47,4 +49,6 @@ pub struct GetFeatureInfoRequestParameters {
     pub exceptions: Option<String>,
     pub time: Option<String>,
     pub elevation: Option<String>,
+
+    pub viewparams: Option<String> // jaar:2020;otherparam:value
 }

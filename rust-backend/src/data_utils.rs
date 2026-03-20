@@ -65,14 +65,48 @@ pub fn open_parquet_reader(layer: &str, layer_filepath: &str) -> Result<Box<dyn 
 
 /// Read only the parquet footer to determine how many record batches the file will produce.
 /// No data pages are read, so this is very cheap (~1ms).
-pub fn get_parquet_batch_count(layer_filepath: &str) -> Result<usize, MapError> {
-    let file = File::open(layer_filepath).map_err(|e| {
-        MapError::Error(format!("Could not open layer file for metadata: {}", e))
-    })?;
+pub fn get_parquet_batch_count(layer_filepath: &str, file: File) -> Result<usize, MapError> {
+    
     let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| {
-        MapError::Error(format!("Could not read parquet metadata: {}", e))
+        MapError::Error(format!("Could not read parquet metadata for file {}: {}", layer_filepath, e))
     })?;
+
     let total_rows = builder.metadata().file_metadata().num_rows() as usize;
+
     Ok((total_rows + PARQUET_BATCH_SIZE - 1) / PARQUET_BATCH_SIZE)
+}
+
+pub fn parquet_reader(layer_filepath: &str, file: File) -> Result<Box<dyn Iterator<Item = Result<RecordBatch, ArrowError>>>, MapError>{
+
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file);
+    
+    let reader = match builder {
+        Ok(b) => b
+            .with_batch_size(PARQUET_BATCH_SIZE)
+            .build(),
+        Err(e) => {
+            log::error!("1. Could not create parquet reader for layer file: {} \n{:?}", layer_filepath, e);
+            return Err(MapError::Error(format!(
+                "1. Could not create parquet reader for layer file: {}",
+                layer_filepath
+            )));
+        }
+    };
+
+    let reader = match reader {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("2. Could not create parquet reader for layer file: {} \n{:?}", layer_filepath, e);
+            return Err(MapError::Error(format!(
+                "2. Could not create parquet reader for layer file: {}",
+                layer_filepath
+            )));
+        }
+    };
+
+    let reader: Box<dyn Iterator<Item = Result<RecordBatch, ArrowError>>> =
+        Box::new(reader.into_iter());
+
+    Ok(reader)
 }
 
