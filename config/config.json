@@ -9,30 +9,34 @@
             "name": "Informatiehuis Marien Workspace",
             "description": "This is the Informatiehuis Marien workspace.",
             "layers": [
+            ]
+        },
+        {
+            "id": "default",
+            "name": "Default Workspace",
+            "description": "This is the default workspace",
+            "layers": [
                 {
-                    "id": "aquadesk-noordzee-benthosmonitoring-1951-2025",
-                    "name": "AQUADESK Noordzee benthosmonitoring 1951–2025",
+                    "id": "temperature",
+                    "name": "default temperature",
                     "config": {
-                        "default_style": "solid_green",
-                        "instance_url": "https://beacon-ihm.maris.nl",
-                        "token": "none",
-                        "query": {"from":"easy_ihm_aquadesk_noordzee","query_parameters":[{"column":"collectie_tijd","alias":"time"},{"column":"longitude","alias":null},{"column":"latitude","alias":null},{"column":"waarde_gemeten","alias":"value"},{"column":"waarde_berekend","alias":null},{"column":"eenheid_gemeten","alias":null},{"column":"eenheid_berekend","alias":null},{"column":"scientific_name_accepted","alias":null},{"column":"grootheid_code","alias":null},{"column":"compartiment_code","alias":null}],"filters":[{"for_query_parameter":"time","min":"1991-01-01T00:00:00Z","max":"2025-12-31T23:59:59Z"},{"for_query_parameter":"longitude","min":-180,"max":180},{"for_query_parameter":"latitude","min":-90,"max":90},{"or":[{"eq":"n","for_query_parameter":"eenheid_gemeten"}]},{"or":[{"eq":"n/m2","for_query_parameter":"eenheid_berekend"}]}],"output":{"format":"parquet"}},
-                        "min_value": 0.0,
-                        "max_value": 50000.0,
-                        "shape": "plus"
-                    }
-                },
-                {
-                    "id": "wadar-2023",
-                    "name": "WADAR Watertemperatuur 2023",
-                    "config": {
-                        "default_style": "solid_blue",
-                        "instance_url": "https://beacon-ihm.maris.nl",
-                        "token": "none",
-                        "query": {"from":"easy_ihm_wadar","query_parameters":[{"column":"longitude","alias":null},{"column":"latitude","alias":null},{"column":"Tijdstip","alias":"time"},{"column":"waarde","alias":"value"},{"column":"Bemonsteringshoogte","alias":null},{"column":"referentie","alias":null},{"column":"compartiment_code","alias":null},{"column":"grootheid","alias":null},{"column":"parameter_code","alias":null},{"column":"eenheid","alias":null}],"filters":[{"for_query_parameter":"time","min":"2022-12-31T22:00:00.000Z","max":"2023-12-31T23:59:59Z"},{"for_query_parameter":"value","min":-5,"max":40},{"or":[{"eq":"graad Celsius","for_query_parameter":"eenheid"}]}],"output":{"format":"parquet"}},
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "depth": {"type": "numeric", "format": ["min", "max"]},
+                            "bbox": {"type": "numeric", "format": ["minlon", "minlat", "maxlon", "maxlat"]}
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "depth": [0, 10],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "thermal",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"TEMPPR01","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": -5.0,
                         "max_value": 40.0,
-                        "shape": "triangle"
+                        "shape": "circle"
                     }
                 }
             ]

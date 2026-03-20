@@ -17,6 +17,14 @@ export type WMSGetMapParameters = {
     exceptions?: string;   // Error format (e.g., "application/vnd.ogc.se_xml")
     time?: string;         // Time parameter (e.g., "2023-01-01")
     elevation?: string;    // Elevation parameter (optional)
+    viewparams?: string;   // View parameters (e.g., "year:2020;otherparam:value")
+    // viewparams?:
+    // - year: numeric
+    // - month: numeric
+    // - day: numeric
+    // - depth: [numeric, numeric] [min, max]
+    // - bbox: [numeric, numeric, numeric, numeric] [minlon, minlat, maxlon, maxlat]
+    // - station; string
 };
 
 

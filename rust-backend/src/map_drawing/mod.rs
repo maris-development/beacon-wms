@@ -1,4 +1,5 @@
 use arrow::array::{AsArray, PrimitiveArray};
+use arrow::compute::CastOptions;
 use arrow::datatypes::{Float64Type, UInt32Type};
 use boundingbox::BoundingBox;
 use image::{Pixel, Rgba, RgbaImage};
@@ -12,6 +13,7 @@ use crate::data_utils::{self};
 use crate::errors::MapError;
 use crate::request_profiling::RequestProfiling;
 use crate::{boundingbox, image_utils, misc};
+use std::fs::File;
 
 lazy_static! {
     pub static ref REPROJECTED_DATASET_CACHE: ReprojectedDatasetCacheEngine =
@@ -34,7 +36,8 @@ pub fn get_map(
     layer: &str,
     color_map: ColorMap,
     crs: &str,
-    layer_filepath: &str,
+    layer_filepath: String,
+    file: File,
     icon_shape: &str,
     profiling: &mut RequestProfiling
 ) -> Result<usize, MapError> {
@@ -65,7 +68,7 @@ pub fn get_map(
     let bbox_margin = Some(reprojected_bbox.get_width() * 0.1);
     let mut drawn_points_set: HashSet<(i64, i64)> = HashSet::new();
 
-    let reader = data_utils::open_parquet_reader(layer, layer_filepath)?;
+    let reader = data_utils::parquet_reader(&layer_filepath, file)?;
 
     profiling.mark("parquet reader created");
 
@@ -124,23 +127,23 @@ pub fn get_map(
         
         let latitude_column = batch
             .column_by_name(LATITUDE_COLUMN)
-            .unwrap()
-            .as_primitive::<Float64Type>()
-            .clone();
+            .unwrap();
+        let latitude_casted_f64 = arrow::compute::cast_with_options(latitude_column, &arrow::datatypes::DataType::Float64, &CastOptions::default()).unwrap();
+        let latitude_column = latitude_casted_f64.as_primitive::<Float64Type>().clone();
         let latitude_column = latitude_column.into_iter();
 
         let longitude_column = batch
             .column_by_name(LONGITUDE_COLUMN)
-            .unwrap()
-            .as_primitive::<Float64Type>()
-            .clone();
+            .unwrap();
+        let longitude_column_f64 = arrow::compute::cast_with_options(longitude_column, &arrow::datatypes::DataType::Float64, &CastOptions::default()).unwrap();
+        let longitude_column = longitude_column_f64.as_primitive::<Float64Type>().clone();
         let longitude_column = longitude_column.into_iter();
 
         let value_column = batch
             .column_by_name(VALUE_COLUMN)
-            .unwrap()
-            .as_primitive::<Float64Type>()
-            .clone();
+            .unwrap();
+        let value_column_f64 = arrow::compute::cast_with_options(value_column, &arrow::datatypes::DataType::Float64, &CastOptions::default()).unwrap();
+        let value_column = value_column_f64.as_primitive::<Float64Type>().clone();
 
 
         profiling.mark(&format!("done reading batch {}", record_batch_name));

@@ -132,13 +132,13 @@ impl InnerReprojectedDatasetCacheEngine {
         schema
             .column_with_name(LATITUDE_COLUMN)
             .ok_or(MapError::Error(String::from(
-                "Could not find column 'Latitude' in schema!",
+                format!("Could not find column {LATITUDE_COLUMN} in schema!")
             )))?;
 
         schema
             .column_with_name(LONGITUDE_COLUMN)
             .ok_or(MapError::Error(String::from(
-                "Could not find column 'Longitude' in schema!",
+                format!("Could not find column {LONGITUDE_COLUMN} in schema!")
             )))?;
 
         // Do the projection applying and then recreate the record batch for that projection

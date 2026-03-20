@@ -63,3 +63,37 @@ pub fn open_parquet_reader(layer: &str, layer_filepath: &str) -> Result<Box<dyn 
     Ok(reader)
 }
 
+pub fn parquet_reader(layer_filepath: &str, file: File) -> Result<Box<dyn Iterator<Item = Result<RecordBatch, ArrowError>>>, MapError>{
+
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file);
+    
+    let reader = match builder {
+        Ok(b) => b
+            .with_batch_size(PARQUET_BATCH_SIZE)
+            .build(),
+        Err(e) => {
+            log::error!("1. Could not create parquet reader for layer file: {} \n{:?}", layer_filepath, e);
+            return Err(MapError::Error(format!(
+                "1. Could not create parquet reader for layer file: {}",
+                layer_filepath
+            )));
+        }
+    };
+
+    let reader = match reader {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("2. Could not create parquet reader for layer file: {} \n{:?}", layer_filepath, e);
+            return Err(MapError::Error(format!(
+                "2. Could not create parquet reader for layer file: {}",
+                layer_filepath
+            )));
+        }
+    };
+
+    let reader: Box<dyn Iterator<Item = Result<RecordBatch, ArrowError>>> =
+        Box::new(reader.into_iter());
+
+    Ok(reader)
+}
+

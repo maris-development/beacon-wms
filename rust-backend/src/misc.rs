@@ -29,6 +29,8 @@ use arrow::array::{
     TimestampSecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
 };
 use chrono::{DateTime};
+use serde_json::Value;
+use sha2::{Sha256, Digest};
 
 pub const ARCTIC_MIN_LATITUDE: f64 = 60.0;
 pub const ANTARCTIC_MAX_LATITUDE: f64 = -60.0;
@@ -631,13 +633,23 @@ pub fn parse_range(input: &str) -> Result<(f64, f64), &str> {
     Ok((start, end))
 }
 
-pub fn get_layer_filepath(workspace_id: &str, layer_id: &str) -> Result<String, String> {
+pub fn get_layer_filepath(workspace_id: &str, layer_id: &str, hash: Option<&str>) -> Result<String, String> {
     let layer_directory = get_env_var(
         "LAYER_DIR",
         Some("../layers"),
     );
 
-    let layer_filename = format!("{}_{}.parquet", workspace_id, layer_id);
+    // let hash = has the viewparams
+
+    let hash = match hash {
+        Some(h) => h.to_string(),
+        None => "".to_string(),
+    };
+
+    // add a param for viewparams or query to hash and add to the filename.
+    // also needs to be done for creating the layer
+    let layer_filename = format!("{}_{}_{}.parquet", workspace_id, layer_id, hash);
+    //let layer_filename = format!("{}_{}.parquet", workspace_id, layer_id);
     let mut layer_filepath = PathBuf::from(layer_directory);
     layer_filepath.push(layer_filename);
 
@@ -645,7 +657,21 @@ pub fn get_layer_filepath(workspace_id: &str, layer_id: &str) -> Result<String, 
         .to_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "Invalid layer filepath".to_string())
+
+    // do here update layer if file_path is non existant?
 }
 
+pub fn hash_viewparams(viewparams: &HashMap<String, Value>) -> String {
+    // Serialize to JSON string in a deterministic way
+    let mut sorted: Vec<_> = viewparams.iter().collect();
+    sorted.sort_by_key(|(k, _)| *k); // sort keys for deterministic hash
+    let json_string = serde_json::to_string(&sorted).unwrap();
 
+    // Compute SHA256 hash
+    let mut hasher = Sha256::new();
+    hasher.update(json_string.as_bytes());
+    let result = hasher.finalize();
 
+    // Return as hex string
+    hex::encode(result)
+}

@@ -47,6 +47,7 @@ cargo run --release  # Use --release for better performance
 **Terminal 2 - Node.js Backend:**
 ```bash
 cd node-backend
+npm install
 npm run dev
 ```
 
