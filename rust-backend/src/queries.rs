@@ -1,3 +1,4 @@
+use log;
 use std::{collections::HashMap, fs::File, future::Future, sync::Arc};
 use tokio::sync::{Mutex, OnceCell};
 use crate::{beacon_api, config::LayerConfig, viewparams};
@@ -89,6 +90,9 @@ fn query_file(layer_filepath: String, layer_config: LayerConfig) -> impl Future<
 }
 
 fn get_auth_token() -> Result<String, env::VarError> {
-    let auth_token = env::var("BEACON_TOKEN")?;
+    let auth_token = env::var("BEACON_TOKEN").unwrap_or(String::new());
+
+    // log::info!("BEACON_TOKEN: {}", auth_token);
+    
     Ok(auth_token)
 }

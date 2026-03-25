@@ -91,10 +91,36 @@
                     <BoundingBox CRS="CRS:84"   minx="-180.0" miny="-90.0" maxx="180.0" maxy="90.0"/>
                     <% availableStyles.forEach(function(style) { %>
                         <Style>
-                        <Name><%= style.name %></Name>
-                        <Title><%= style.description %> (shape: <%= layer.config.shape %>)</Title>
+                            <Name><%= style.name %></Name>
+                            <Title><%= style.description %> (shape: <%= layer.config.shape %>)</Title>
                         </Style>
                     <% }); %>
+                    <% Object.entries(layer.config.dimension).forEach(function([name, dimension]) { %>
+                      <Dimension Name="<%= name %>" Default="<%= dimension.default %>" Unit="<%= dimension.unit %>">                 
+                        <%= dimension.accepted.join(',') %>
+                      </Dimension>
+                    <% }); %>
+                    <% Object.entries(layer.config.available_viewparams).forEach(function([name, param]) { %>
+                    
+                      <ViewParam 
+                        Name="<%= name %>" 
+                        Type="<%= param.type %>">
+                    
+                        <% if (param.format) { %>
+                          Format="<%= Array.isArray(param.format) ? param.format.join(',') : param.format %>"
+                        <% } %>
+                        
+                        <% if (param.allowed) { %>
+                          <Allowed>
+                            <%= Object.values(param.allowed)
+                                  .map(arr => arr.join(','))
+                                  .join(';') %>
+                          </Allowed>
+                        <% } %>
+                      
+                      </ViewParam>
+                  
+                    <% }); %>                    
                 </Layer>
             <% }); %>
         </Layer>
