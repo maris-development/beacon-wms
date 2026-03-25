@@ -1,8 +1,7 @@
 use std::{collections::HashMap, fs::File, future::Future, sync::Arc};
-
 use tokio::sync::{Mutex, OnceCell};
-
 use crate::{beacon_api, config::LayerConfig, viewparams};
+use std::env;
 
 type LockMap = Arc<Mutex<HashMap<String, Arc<OnceCell<File>>>>>;
 
@@ -26,9 +25,11 @@ pub async fn get_dataset_file(
 
 
 async fn get_or_execute_dataset<F : FnOnce() -> Fut, Fut: Future<Output = Result<File, String>>>(lock_map: &LockMap, view_params_key: String, fut: F) -> Result<File,String> {
+    // let key_for_log = view_params_key.clone();
     let mut locked_map = lock_map.lock().await;
     let once_cell= locked_map.entry(view_params_key).or_insert(Arc::new(OnceCell::new()));
     let resolved = once_cell.get_or_try_init(fut).await;
+    // log::info!("Fetching file for viewparams key: {}", key_for_log);
     resolved.map(|f| f.try_clone().unwrap())
 } 
 
@@ -67,12 +68,14 @@ fn query_file(layer_filepath: String, layer_config: LayerConfig) -> impl Future<
 
         // run query
         let instance_url = &layer_config.config.instance_url;
-        let auth_token = &layer_config.config.token;
+        // let auth_token = &layer_config.config.token;
+
+        let auth_token = get_auth_token().map_err(|e| e.to_string())?;
 
         beacon_api::query(
             &query_str,
             instance_url,
-            auth_token,
+            auth_token.as_str(),
             &layer_filepath
         )
         .await
@@ -83,4 +86,9 @@ fn query_file(layer_filepath: String, layer_config: LayerConfig) -> impl Future<
             Err(err) => Err(err.to_string()),
         }
     }
+}
+
+fn get_auth_token() -> Result<String, env::VarError> {
+    let auth_token = env::var("BEACON_TOKEN")?;
+    Ok(auth_token)
 }

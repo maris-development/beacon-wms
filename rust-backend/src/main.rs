@@ -116,6 +116,22 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
     //other requests wait until it's done, then read the file
     let requested_viewparams: HashMap<String, Value> = viewparams::parse_viewparams(&get_map_params.viewparams);
 
+    // apply ogc values to the parsed viewparams
+    let requested_viewparams: HashMap<String, Value> = match viewparams::ogc_to_viewparams(
+        requested_viewparams,
+        &get_map_params.elevation,
+        &get_map_params.time
+    ) {
+        Ok(map) => map,
+        Err(err) => {
+            log::error!("Failed to parse OGC viewparams: {}", err);
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("Failed to parse OGC viewparams: {}", err),
+            ).into_response();
+        }
+    };
+
     // should bbox be in the view params?
     let bounding_box = match BoundingBox::from_string(
         get_map_params.bbox.as_str(),
@@ -682,37 +698,6 @@ mod tests {
     use serde_json::json;
     use sha2::{Sha256, Digest};
 
-    fn parse_viewparams(vp_str: &str) -> HashMap<String, Value> {
-    let mut vp_map = HashMap::<String, Value>::new();
-
-    for pair in vp_str.split(';') {
-        let mut iter = pair.splitn(2, ':');
-        if let (Some(key), Some(value_str)) = (iter.next(), iter.next()) {
-            // Try to parse as JSON, fallback to string
-            let parsed_value: Value = serde_json::from_str(value_str)
-                .unwrap_or(Value::String(value_str.to_string()));
-            vp_map.insert(key.to_string(), parsed_value);
-            }
-        }
-
-        vp_map
-    }
-
-    fn hash_viewparams(viewparams: &HashMap<String, Value>) -> String {
-        // Serialize to JSON string in a deterministic way
-        let mut sorted: Vec<_> = viewparams.iter().collect();
-        sorted.sort_by_key(|(k, _)| *k); // sort keys for deterministic hash
-        let json_string = serde_json::to_string(&sorted).unwrap();
-
-        // Compute SHA256 hash
-        let mut hasher = Sha256::new();
-        hasher.update(json_string.as_bytes());
-        let result = hasher.finalize();
-
-        // Return as hex string
-        hex::encode(result)
-    }
-
     #[tokio::test]
     async fn test_query_file() {
 
@@ -776,4 +761,120 @@ mod tests {
 
         println!("file succesfully downloaded {:?}", file);
     }
+
+    #[test]
+    fn test_parse_and_lookup_elevation_cases() {
+        use std::collections::HashMap;
+
+        let bins: HashMap<String, [i32; 2]> = [
+            ("0-5", [0, 5]),
+            ("5-10", [5, 10]),
+            ("10-20", [10, 20]),
+            ("20-30", [20, 30]),
+            ("30-50", [30, 50]),
+            ("50-75", [50, 75]),
+            ("75-100", [75, 100]),
+            ("100-125", [100, 125]),
+            ("125-150", [125, 150]),
+            ("150-200", [150, 200]),
+            ("200-250", [200, 250]),
+            ("250-300", [250, 300]),
+            ("300-400", [300, 400]),
+            ("400-500", [400, 500]),
+            ("500-600", [500, 600]),
+            ("600-700", [600, 700]),
+            ("700-800", [700, 800]),
+            ("800-900", [800, 900]),
+            ("900-1000", [900, 1000]),
+            ("1000-1100", [1000, 1100]),
+            ("1100-1200", [1100, 1200]),
+            ("1200-1300", [1200, 1300]),
+            ("1300-1400", [1300, 1400]),
+            ("1400-1500", [1400, 1500]),
+            ("1500-1750", [1500, 1750]),
+            ("1750-2000", [1750, 2000]),
+            ("2000-2500", [2000, 2500]),
+            ("2500-3000", [2500, 3000]),
+            ("3000-3500", [3000, 3500]),
+            ("3500-4000", [3500, 4000]),
+            ("4000-4500", [4000, 4500]),
+            ("4500-5000", [4500, 5000]),
+            ("5000-12000", [5000, 12000]),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+
+        // --- VALID CASES ---
+
+        let elevation_input = Some("10/20".to_string());
+        // let elevation_input = Some("20,30".to_string());
+        // let elevation_input = Some("50/75/5".to_string()); // step ignored
+        // let elevation_input = Some("-20/-10".to_string()); // abs → 10-20
+        // let elevation_input = Some(" 100 / 125 ".to_string()); // whitespace
+        // let elevation_input = Some("5000/12000".to_string()); // valid only if key exists exactly
+
+        // --- INVALID FORMAT ---
+
+        // let elevation_input = Some("10".to_string()); // single value
+        // let elevation_input = Some("10,20,30".to_string()); // too many values
+        // let elevation_input = Some("a/b".to_string()); // non-numeric
+        // let elevation_input = Some("".to_string()); // empty
+        // let elevation_input = None; // missing
+
+        // --- NON-MATCHING BINS ---
+
+        // let elevation_input = Some("0/20".to_string()); // spans multiple bins
+        // let elevation_input = Some("15/25".to_string()); // no exact match
+        // let elevation_input = Some("30/10".to_string()); // becomes 10-30 (invalid)
+        // let elevation_input = Some("75/110".to_string()); // partial overlap
+        // let elevation_input = Some("5000/6000".to_string()); // becomes 5000-6000 (not defined)
+
+        let result = viewparams::parse_ogc_elevation(&elevation_input);
+
+        println!("Result: {:?}", result);
+
+        // Adjust assertion depending on which case you test
+        assert!(result.is_ok());
+        // assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ogc_time() {
+        // --- VALID CASES ---
+
+        // let time_input = Some("1982-03-01T00:00:00Z/P1Y".to_string());
+        let time_input = Some("2000-12-15T23:59:59Z/P1M".to_string());
+        // let time_input = Some("1999-01-01T00:00:00Z/P1W".to_string());
+        // let time_input = Some(" 1984-02-01T00:00:00Z/P1D ".to_string()); // whitespace
+        // let time_input = Some("1999-01-01T00:00:00Z/P1H".to_string());
+
+        // --- INVALID FORMAT ---
+
+        // let time_input = Some("1982-03-01".to_string()); // missing time + Z
+        // let time_input = Some("1982-03-01 00:00:00Z".to_string()); // missing T
+        // let time_input = Some("1982-03-01T00:00:00".to_string()); // missing Z
+        // let time_input = Some("1982-03-01T00:00Z".to_string()); // missing seconds
+        // let time_input = Some("1982-03-01T00:00:00+01:00".to_string()); // timezone offset not allowed
+        // let time_input = Some("1982-03-01T00:00:00.123Z".to_string()); // milliseconds not allowed
+        // let time_input = Some("1982-13-01T00:00:00Z".to_string()); // invalid month
+        // let time_input = Some("1982-02-30T00:00:00Z".to_string()); // invalid day
+        // let time_input = Some("not-a-date".to_string()); // garbage input
+        // let time_input = Some("".to_string()); // empty string
+        // let time_input = None; // missing input
+
+        // --- UNSUPPORTED CASES ---
+
+        // let time_input = Some("1982-03-01T00:00:00Z/1982-03-01T00:00:00Z".to_string()); // range
+        // let time_input = Some("1982-03-01T00:00:00Z,1982-03-01T00:00:00Z".to_string()); // list
+
+        let result = viewparams::parse_ogc_time(&time_input);
+
+        println!("Result: {:?}", result);
+
+        // Toggle depending on case
+        assert!(result.is_ok());
+        // assert!(result.is_err());
+    }
+
 }

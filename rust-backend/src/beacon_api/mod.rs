@@ -56,9 +56,30 @@ pub async fn query(
             let mut stream = response.bytes_stream();
 
             while let Some(chunk) = stream.next().await {
-                let chunk = chunk.map_err(|e| (e.to_string(), 500))?;
-                file.write_all(&chunk).map_err(|e| (e.to_string(), 500))?;
+                // let chunk = chunk.map_err(|e| (e.to_string(), 500))?;
+                // file.write_all(&chunk).map_err(|e| (e.to_string(), 500))?;
+                let chunk = match chunk {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        // cleanup partial file
+                        let _ = fs::remove_file(file_path);
+                        return Err((e.to_string(), 500));
+                    }
+                };
+            
+                if let Err(e) = file.write_all(&chunk) {
+                    let _ = fs::remove_file(file_path);
+                    return Err((e.to_string(), 500));
+                }
             }
+
+            // if file is empty/no chunks were read then delete the file and return err
+            if fs::metadata(file_path).unwrap().len() == 0 {
+                fs::remove_file(file_path)
+                    .map_err(|e| (e.to_string(), 500))?;
+                return Err(("Returned query has file lenght 0".to_string(), 500));
+            }
+
         }
 
         StatusCode::NO_CONTENT => {
