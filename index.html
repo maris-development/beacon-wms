@@ -18,10 +18,12 @@
       color: #fff;
       padding: 8px 14px;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 16px;
       flex-shrink: 0;
       flex-wrap: wrap;
+      max-height: 30vh;
+      overflow-y: auto;
     }
     #toolbar h1 { font-size: 15px; font-weight: 600; margin-right: 8px; }
     #toolbar label { font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
@@ -29,14 +31,14 @@
     #toolbar select { font-size: 12px; padding: 2px 6px; border-radius: 3px; border: none; }
     #layer-controls {
       display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
+      flex-direction: column;
+      gap: 4px;
     }
     .layer-control {
-      display: inline-flex;
+      display: flex;
       align-items: center;
       gap: 6px;
+      flex-wrap: wrap;
     }
     .layer-control label {
       white-space: nowrap;
@@ -52,6 +54,20 @@
       border: none;
       width: 220px;
       font-family: monospace;
+    }
+    .layer-control select.dim-select {
+      font-size: 11px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      border: none;
+      max-width: 200px;
+      font-family: monospace;
+    }
+    .dim-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin-left: 4px;
     }
 
     #container { display: flex; flex: 1; overflow: hidden; }
@@ -144,7 +160,8 @@
 <div id="status-bar">Ready</div>
 
 <script>
-  const WMS_URL  = 'http://localhost:3000/workspaces/default/wms';
+  // const WMS_URL  = 'http://localhost:3000/workspaces/default/wms';
+  const WMS_URL  = 'https://ows.emodnet-bathymetry.eu/wms';
   const layerControls = document.getElementById('layer-controls');
   const layerConfigs = [];
   const wmsLayers = new Map();
@@ -163,7 +180,7 @@
   }).addTo(map);
 
   // ── WMS layers ───────────────────────────────────────────────
-  const wmsOptions = (layerId, style, viewparams) => {
+  const wmsOptions = (layerId, style, viewparams, dims) => {
     const opts = {
       layers:      layerId,
       styles:      style || '',
@@ -173,6 +190,10 @@
       attribution: 'Beacon WMS',
     };
     if (viewparams) opts.viewparams = viewparams;
+    if (dims) {
+      if (dims.TIME) opts.time = dims.TIME;
+      if (dims.ELEVATION) opts.elevation = dims.ELEVATION;
+    }
     return opts;
   };
 
@@ -184,6 +205,92 @@
     return child ? child.textContent.trim() : '';
   };
 
+  // ── ISO 8601 duration & interval expansion ─────────────────
+  function parseISO8601Duration(str) {
+    const m = str.match(/^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/);
+    if (!m) return null;
+    return {
+      years:   parseInt(m[1] || 0, 10),
+      months:  parseInt(m[2] || 0, 10),
+      days:    parseInt(m[3] || 0, 10),
+      hours:   parseInt(m[4] || 0, 10),
+      minutes: parseInt(m[5] || 0, 10),
+      seconds: parseInt(m[6] || 0, 10),
+    };
+  }
+
+  function addDuration(date, dur) {
+    const d = new Date(date);
+    d.setUTCFullYear(d.getUTCFullYear() + dur.years);
+    d.setUTCMonth(d.getUTCMonth() + dur.months);
+    d.setUTCDate(d.getUTCDate() + dur.days);
+    d.setUTCHours(d.getUTCHours() + dur.hours);
+    d.setUTCMinutes(d.getUTCMinutes() + dur.minutes);
+    d.setUTCSeconds(d.getUTCSeconds() + dur.seconds);
+    return d;
+  }
+
+  /**
+   * Expand an ISO 8601 time interval into discrete values.
+   * Supported forms:
+   *   start/end/period   → enumerate from start to end stepping by period
+   *   start/period       → enumerate from start to now stepping by period
+   * Returns an array of ISO date strings, or null if not an interval.
+   * Capped at 5000 steps to avoid runaway expansion.
+   */
+  function expandTimeInterval(spec) {
+    const parts = spec.split('/');
+    if (parts.length < 2 || parts.length > 3) return null;
+
+    let start, end, dur;
+    if (parts.length === 3) {
+      // start/end/period
+      start = new Date(parts[0]);
+      end   = new Date(parts[1]);
+      dur   = parseISO8601Duration(parts[2]);
+    } else {
+      // start/period  or  period/end  — we handle start/period
+      if (parts[1].startsWith('P')) {
+        start = new Date(parts[0]);
+        end   = new Date();  // now
+        dur   = parseISO8601Duration(parts[1]);
+      } else if (parts[0].startsWith('P')) {
+        // period/end — less common, expand backwards
+        end   = new Date(parts[1]);
+        dur   = parseISO8601Duration(parts[0]);
+        if (!dur || isNaN(end.getTime())) return null;
+        // Walk backwards from end; collect then reverse
+        const vals = [];
+        let cursor = new Date(end);
+        const negDur = {
+          years: -dur.years, months: -dur.months, days: -dur.days,
+          hours: -dur.hours, minutes: -dur.minutes, seconds: -dur.seconds,
+        };
+        for (let i = 0; i < 5000; i++) {
+          vals.push(cursor.toISOString());
+          const prev = addDuration(cursor, negDur);
+          if (prev.getTime() >= cursor.getTime()) break;
+          cursor = prev;
+        }
+        return vals.reverse();
+      } else {
+        return null;
+      }
+    }
+
+    if (!dur || isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+
+    const values = [];
+    let cursor = new Date(start);
+    for (let i = 0; i < 5000 && cursor.getTime() <= end.getTime(); i++) {
+      values.push(cursor.toISOString());
+      const next = addDuration(cursor, dur);
+      if (next.getTime() <= cursor.getTime()) break; // zero/negative step guard
+      cursor = next;
+    }
+    return values;
+  }
+
   function extractLeafLayers(layerEl, out) {
     const childLayers = directChildrenByName(layerEl, 'Layer');
     const name = firstDirectChildText(layerEl, 'Name');
@@ -194,10 +301,40 @@
         .map(styleEl => firstDirectChildText(styleEl, 'Name'))
         .filter(Boolean);
 
+      // Parse Dimension elements for TIME / ELEVATION
+      const dimensions = {};
+      for (const dimEl of directChildrenByName(layerEl, 'Dimension')) {
+        const dimName = (dimEl.getAttribute('name') || '').toUpperCase();
+        if (dimName === 'TIME' || dimName === 'ELEVATION') {
+          const defaultVal = dimEl.getAttribute('default') || '';
+          const valuesText = dimEl.textContent.trim();
+          // Values can be comma-separated discrete values or interval specs
+          let values = valuesText ? valuesText.split(',').map(v => v.trim()).filter(Boolean) : [];
+
+          // Expand any interval specs (start/end/period or start/period)
+          if (dimName === 'TIME') {
+            const expanded = [];
+            for (const v of values) {
+              if (v.includes('/')) {
+                const result = expandTimeInterval(v);
+                if (result) expanded.push(...result);
+                else expanded.push(v); // keep raw if unparseable
+              } else {
+                expanded.push(v);
+              }
+            }
+            values = expanded;
+          }
+
+          dimensions[dimName] = { default: defaultVal, values };
+        }
+      }
+
       out.push({
         id: name,
         title: title || name,
         styles,
+        dimensions,
       });
       return;
     }
@@ -247,17 +384,72 @@
       viewparamsInput.title = 'VIEWPARAMS (key:value pairs separated by ;)';
 
       control.append(toggle, label, styleSelect, viewparamsInput);
+
+      // Build dimension controls (TIME / ELEVATION)
+      const dimEls = {};
+      for (const dimName of ['TIME', 'ELEVATION']) {
+        const dim = layer.dimensions[dimName];
+        if (!dim) continue;
+
+        const dimLabel = document.createElement('span');
+        dimLabel.className = 'dim-label';
+        dimLabel.textContent = dimName === 'ELEVATION' ? 'Elev:' : 'Time:';
+
+        if (dim.values.length > 0 && !dim.values.some(v => v.includes('/'))) {
+          // Discrete values → dropdown
+          const sel = document.createElement('select');
+          sel.className = 'dim-select';
+          sel.id = `dim-${dimName.toLowerCase()}-layer-${idx}`;
+          sel.title = `${dimName} dimension for ${layer.title}`;
+          for (const val of dim.values) {
+            const opt = document.createElement('option');
+            opt.value = val;
+            opt.textContent = val;
+            if (val === dim.default) opt.selected = true;
+            sel.append(opt);
+          }
+          dimEls[dimName] = sel;
+          control.append(dimLabel, sel);
+        } else {
+          // Interval or freeform → text input
+          const inp = document.createElement('input');
+          inp.type = 'text';
+          inp.className = 'dim-select';
+          inp.id = `dim-${dimName.toLowerCase()}-layer-${idx}`;
+          inp.placeholder = dim.default || (dimName === 'TIME' ? '2024-01-01T00:00:00Z' : '0');
+          inp.value = dim.default;
+          inp.title = `${dimName} dimension for ${layer.title}`;
+          inp.style.width = dimName === 'TIME' ? '180px' : '80px';
+          dimEls[dimName] = inp;
+          control.append(dimLabel, inp);
+        }
+      }
+
+      control.append(document.createElement('br'));
+
       layerControls.append(control);
+
+      const getDimValues = () => {
+        const d = {};
+        for (const dimName of ['TIME', 'ELEVATION']) {
+          if (!dimEls[dimName]) continue;
+          const val = dimEls[dimName].value;
+          if (val) d[dimName] = val;
+        }
+        return Object.keys(d).length ? d : null;
+      };
 
       const cfg = {
         id: layer.id,
         toggleEl: toggle,
         styleEl: styleSelect,
         viewparamsEl: viewparamsInput,
+        dimEls,
+        getDimValues,
       };
       layerConfigs.push(cfg);
 
-      const tile = L.tileLayer.wms(WMS_URL, wmsOptions(cfg.id, styleSelect.value, viewparamsInput.value));
+      const tile = L.tileLayer.wms(WMS_URL, wmsOptions(cfg.id, styleSelect.value, viewparamsInput.value, getDimValues()));
       wmsLayers.set(cfg.id, tile);
       if (toggle.checked) {
         tile.addTo(map);
@@ -275,7 +467,7 @@
           map.removeLayer(current);
         }
 
-        const next = L.tileLayer.wms(WMS_URL, wmsOptions(cfg.id, styleSelect.value, viewparamsInput.value));
+        const next = L.tileLayer.wms(WMS_URL, wmsOptions(cfg.id, styleSelect.value, viewparamsInput.value, getDimValues()));
         wmsLayers.set(cfg.id, next);
         if (toggle.checked) {
           next.addTo(map);
@@ -290,6 +482,22 @@
         viewparamsTimer = setTimeout(refreshLayer, 600);
       });
       viewparamsInput.addEventListener('change', refreshLayer);
+
+      // Wire up dimension controls
+      for (const dimName of ['TIME', 'ELEVATION']) {
+        const el = dimEls[dimName];
+        if (!el) continue;
+        if (el.tagName === 'SELECT') {
+          el.addEventListener('change', refreshLayer);
+        } else {
+          let dimTimer;
+          el.addEventListener('input', () => {
+            clearTimeout(dimTimer);
+            dimTimer = setTimeout(refreshLayer, 600);
+          });
+          el.addEventListener('change', refreshLayer);
+        }
+      }
     });
 
     if (layerConfigs.length === 0) {
@@ -305,6 +513,7 @@
     });
 
     const response = await fetch(`${WMS_URL}?${params}`);
+
     if (!response.ok) {
       throw new Error(`GetCapabilities failed with status ${response.status}`);
     }
@@ -328,6 +537,7 @@
   }
 
   loadCapabilitiesLayers().catch(err => {
+    console.error('Error loading GetCapabilities:', err);
     layerControls.innerHTML = `<span class="layer-controls-msg">Could not load layers: ${err.message}</span>`;
   });
 
@@ -400,6 +610,16 @@
     });
 
     if (activeViewparams) params.set('VIEWPARAMS', activeViewparams);
+
+    // Collect dimension values from active layers (use first non-empty value per dimension)
+    for (const dimName of ['TIME', 'ELEVATION']) {
+      for (const cfg of activeConfigs) {
+        if (cfg.dimEls && cfg.dimEls[dimName]) {
+          const val = cfg.dimEls[dimName].value;
+          if (val) { params.set(dimName, val); break; }
+        }
+      }
+    }
 
     try {
       const resp = await fetch(`${WMS_URL}?${params}`);
