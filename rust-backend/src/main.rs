@@ -114,7 +114,11 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
     // problem is that multiple requests can come in for different the same dataset
     //need to lock an object (per layer + year) while query is being executed
     //other requests wait until it's done, then read the file
+
+    // create a hashmap voor query params containing view params and dimension params
+
     let requested_viewparams: HashMap<String, Value> = viewparams::parse_viewparams(&get_map_params.viewparams);
+
 
     // apply ogc values to the parsed viewparams
     let requested_viewparams: HashMap<String, Value> = match viewparams::ogc_to_viewparams(

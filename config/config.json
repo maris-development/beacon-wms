@@ -22,15 +22,14 @@
                     "config": {
                         "dimension": {
                             "time": {
-                                "default": "2021-01-01T00:00:00/P1Y",
-                                "unit": "ISO8601",
-                                "accepted": [
-                                    "1950-01-01T00:00:00/P1Y"
-                                ]
+                                "default": "2021-01-01T00:00:00Z",
+                                "units": "ISO8601",
+                                "accepted": "1950-01-01T00:00:00Z/P1Y"
                             },
                             "elevation": {
                                 "default": "0-5",
-                                "unit": "m",
+                                "units": "m",
+                                "viewparam": "depth (refereert naar available_viewparams depth allowed in wms xml en controlere van dimensions",
                                 "accepted": [
                                     "0-5",
                                     "5-10",
@@ -64,7 +63,7 @@
                                     "3500-4000",
                                     "4000-4500",
                                     "4500-5000",
-                                    "5000-"
+                                    "5000-12000"
                                 ]
                             }
                         },
@@ -107,7 +106,7 @@
                                     "3500-4000": [3500, 4000],
                                     "4000-4500": [4000, 4500],
                                     "4500-5000": [4500, 5000],
-                                    "5000-": [5000, 12000]
+                                    "5000-12000": [5000, 12000]
                                 }
                             }
                         },

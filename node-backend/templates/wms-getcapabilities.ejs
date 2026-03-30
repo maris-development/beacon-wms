@@ -96,31 +96,24 @@
                         </Style>
                     <% }); %>
                     <% Object.entries(layer.config.dimension).forEach(function([name, dimension]) { %>
-                      <Dimension Name="<%= name %>" Default="<%= dimension.default %>" Unit="<%= dimension.unit %>">                 
+                      <Dimension name="<%= name %>" default="<%= dimension.default %>" units="<%= dimension.units %>">                 
                         <%= dimension.accepted.join(',') %>
                       </Dimension>
                     <% }); %>
                     <% Object.entries(layer.config.available_viewparams).forEach(function([name, param]) { %>
-                    
-                      <ViewParam 
-                        Name="<%= name %>" 
-                        Type="<%= param.type %>">
+                      <ViewParam>
+                        <Name><%= name %></Name>
+                        <Type><%= param.type %></Type>
                     
                         <% if (param.format) { %>
-                          Format="<%= Array.isArray(param.format) ? param.format.join(',') : param.format %>"
+                          <Format><%= Array.isArray(param.format) ? param.format.join(',') : param.format %></Format>
                         <% } %>
                         
                         <% if (param.allowed) { %>
-                          <Allowed>
-                            <%= Object.values(param.allowed)
-                                  .map(arr => arr.join(','))
-                                  .join(';') %>
-                          </Allowed>
+                          <Allowed><%= Object.keys(param.allowed).join(',') %></Allowed>
                         <% } %>
-                      
                       </ViewParam>
-                  
-                    <% }); %>                    
+                    <% }); %>                   
                 </Layer>
             <% }); %>
         </Layer>

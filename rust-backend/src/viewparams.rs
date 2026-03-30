@@ -34,6 +34,7 @@ pub async fn assign_viewparams_in_config(
     layer_configs: &mut Vec<crate::config::LayerConfig>,
     viewparams: &HashMap<String, Value>,
 ) -> Result<(), (StatusCode, String)> {
+
     for layer_config in layer_configs {
         // Ensure assigned_viewparams exists (with defaults if present)
         let assigned_viewparams = layer_config
@@ -332,16 +333,18 @@ pub fn parse_ogc_elevation(
         // allow optional step → ignore everything after second value
         let parts: Vec<&str> = input.split('/').collect();
         if parts.len() < 2 {
-            return Err("invalid elevation format".into());
+            return Err("invalid elevation format, expected min/max".into());
         }
         split_ogc_elevation(parts[0], parts[1])?
-    } else if input.contains(',') {
-        let parts: Vec<&str> = input.split(',').collect();
-        if parts.len() != 2 {
-            return Err("invalid elevation format".into());
-        }
-        split_ogc_elevation(parts[0], parts[1])?
-    } else {
+    } 
+    // else if input.contains(',') {
+    //     let parts: Vec<&str> = input.split(',').collect();
+    //     if parts.len() != 2 {
+    //         return Err("invalid elevation format".into());
+    //     }
+    //     split_ogc_elevation(parts[0], parts[1])?
+    // } 
+    else {
         return Err("invalid elevation format".into());
     };
 
@@ -365,7 +368,7 @@ fn split_ogc_elevation(a: &str, b: &str) -> Result<(f64, f64), String> {
 }
 
 // parse ogc time string iso 8601 format
-// accepted YYYY-MM-DDThh:mm:ssZ/PnX
+// accepted YYYY-MM-DDThh:mm:ssZ
 pub fn parse_ogc_time(
     input: &Option<String>,
 ) -> Result<HashMap<String, Value>, String> {
@@ -473,3 +476,27 @@ pub fn ogc_to_viewparams(
 
     Ok(viewparams)
 }
+
+// query_parameters{
+//     viewparams{
+
+//     },
+//     dimensions{
+
+//     }
+// }
+
+
+
+// TODO:
+
+// for viewparams
+// parse viewparams can remain the same only change:
+// // put the hasmap into another hashmap named queryparams
+
+// for ogc params / dimension params
+// single function that takes both time and elevation
+// returns hashmap dimensions{}
+// if time is empty string don't add time to hashmap
+// if time is invalid return error (only accept single time values)
+// if elevation is empty string don't add to hashmap

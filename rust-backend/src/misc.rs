@@ -1,4 +1,4 @@
-use crate::boundingbox::BoundingBox;
+use crate::{boundingbox::BoundingBox, config::AcceptedValues};
 use crate::errors::MapError;
 use arrow::{array::{Array, PrimitiveArray, AsArray, Float64Array, Int64Array, StringArray}};
 use arrow::datatypes::{Float32Type, Float64Type, Int16Type, Int32Type, Int8Type};
@@ -588,7 +588,29 @@ pub fn read_config_file() -> crate::config::ConfigFile {
     let config_file_location = format!("{}/config.json", config_dir);
     let json_str =
         std::fs::read_to_string(config_file_location).expect("Failed to read config file");
-    let parsed: crate::config::ConfigFile = serde_json::from_str(&json_str).unwrap();
+    let mut parsed: crate::config::ConfigFile = serde_json::from_str(&json_str).unwrap();
+
+    // if parsed.workspaces.is_some() {
+    //     for mut workspace in parsed.workspaces.expect("") {
+    //         for mut layer_config in workspace.layers {
+    //             let mut layer_inner_config = layer_config.config;
+    //             if layer_inner_config.dimensions.is_some() {
+    //                 for (key, mut dimension) in layer_inner_config.dimensions.expect("").into_iter() {
+                        
+    //                     if dimension.accepted.is_some() {
+    //                         match dimension.accepted.expect("") {
+    //                             AcceptedValues::Multiple(values) => values,
+    //                             AcceptedValues::Single(period) => {
+    //                                 // return generate_iso_period_timestamps(period)
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }      
+    //         }
+    //     }    
+    // }
+
     parsed
 }
 
