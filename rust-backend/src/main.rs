@@ -115,26 +115,38 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
     //need to lock an object (per layer + year) while query is being executed
     //other requests wait until it's done, then read the file
 
-    // create a hashmap voor query params containing view params and dimension params
-
+    // parse viewparams
     let requested_viewparams: HashMap<String, Value> = viewparams::parse_viewparams(&get_map_params.viewparams);
 
+    // parse ocg dimensions and check for validity
+    let requested_dimensions: HashMap<String, Value> =
+        match viewparams::parse_time_elevation(&get_map_params.time, &get_map_params.elevation) {
+            Ok(map) => map,
+            Err(e) => {
+                return (StatusCode::BAD_REQUEST, e).into_response();
+            }
+        };
 
-    // apply ogc values to the parsed viewparams
-    let requested_viewparams: HashMap<String, Value> = match viewparams::ogc_to_viewparams(
-        requested_viewparams,
-        &get_map_params.elevation,
-        &get_map_params.time
-    ) {
-        Ok(map) => map,
-        Err(err) => {
-            log::error!("Failed to parse OGC viewparams: {}", err);
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("Failed to parse OGC viewparams: {}", err),
-            ).into_response();
-        }
-    };
+    // this out hashmap might be skipped depending on the solution
+    let queryparams: HashMap<String, Value> = [
+        (
+            "viewparams".to_string(),
+            Value::Object(requested_viewparams.into_iter().collect()),
+        ),
+        (
+            "dimensionparams".to_string(),
+            Value::Object(requested_dimensions.into_iter().collect()),
+        ),
+    ]
+    .into_iter()
+    .collect();
+
+    // now what????
+    // time is bothering me soo much because the dimension does not match with the viewparams
+    // how are we supposed to know if we need the year, month, day?
+    // because in the query we are supposed to insert year, or year and month, or year, month and day.
+    // we don't just replace the entire date value
+    // how are we making sure this does not just throw an error for any layer?
 
     // should bbox be in the view params?
     let bounding_box = match BoundingBox::from_string(
@@ -203,6 +215,7 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
         .cloned()
         .collect::<Vec<config::LayerConfig>>();
 
+    // assing viewparams and dimension params to layer
     match viewparams::assign_viewparams_in_config(&mut layers_configs, &requested_viewparams)
         .await {
             Ok(_) => {},
@@ -699,186 +712,123 @@ async fn available_styles() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-    use sha2::{Sha256, Digest};
+    use serde_json::{Value, json};
+    use std::collections::HashMap;
 
-    #[tokio::test]
-    async fn test_query_file() {
+    #[test]
+    fn test_both_valid() {
+        let time = Some("2024-01-01T12:00:00Z".to_string());
+        let elevation = Some("0/10".to_string());
 
-        let layer_config_json = json!(
-            {
-                    "id": "temperature",
-                    "name": "default temperature",
-                    "config": {
-                        "available_viewparams": {
-                            "year": {"type": "numeric", "format": "yyyy"},
-                            "depth": {"type": "numeric", "format": ["min", "max"]},
-                            "bbox": {"type": "numeric", "format": ["minlon", "minlat", "maxlon", "maxlat"]}
-                        },
-                        "assigned_viewparams": {
-                            "year": 2021,
-                            "depth": [0, 10],
-                            "bbox": [-180, -90, 180, 90]
-                        },
-                        "default_style": "thermal",
-                        "instance_url": "https://beacon-cdi.maris.nl/",
-                        "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczpcL1wvZGF0YS5ibHVlLWNsb3VkLm9yZyIsImF1ZCI6Imh0dHBzOlwvXC9kYXRhLmJsdWUtY2xvdWQub3JnIiwiaWF0IjoxNzY5NjAxMjYyLCJleHAiOjE4MDExMzcyNjIsInVzciI6MzIsImlkIjoicGF1bEBtYXJpcy5ubCIsImVwX29yZ2FuaXNhdGlvbiI6Ik1BUklTIn0.t3P2PAewHYy4JHdyu0MWnyUzS3MtIZrI5vdAz2tuGmI",
-                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"TEMPPR01","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[2]%","lt_eq":"%bbox[0]%"},{"column":"latitude","gt_eq":"%bbox[3]%","lt_eq":"%bbox[1]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
-                        "min_value": -5.0,
-                        "max_value": 40.0,
-                        "shape": "circle"
-                    }
-                }
+        let result = viewparams::parse_time_elevation(&time, &elevation).unwrap();
+
+        let mut expected = HashMap::<String, Value>::new();
+        expected.insert("time".to_string(), Value::String("2024-01-01T12:00:00Z".to_string()));
+        expected.insert("elevation".to_string(), Value::String("0/10".to_string()));
+
+        println!("parsed dimensions: {:?}", result);
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_only_time_valid() {
+        let time = Some("2024-01-01T12:00:00Z".to_string());
+        let elevation = None;
+
+        let result = viewparams::parse_time_elevation(&time, &elevation).unwrap();
+
+        let mut expected = HashMap::<String, Value>::new();
+        expected.insert("time".to_string(), Value::String("2024-01-01T12:00:00Z".to_string()));
+        println!("parsed dimensions: {:?}", result);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_only_elevation_valid() {
+        let time = None;
+        let elevation = Some("0/10".to_string());
+
+        let result = viewparams::parse_time_elevation(&time, &elevation).unwrap();
+
+        let mut expected = HashMap::<String, Value>::new();
+        expected.insert("elevation".to_string(), Value::String("0/10".to_string()));
+        println!("parsed dimensions: {:?}", result);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_empty_inputs() {
+        let time: Option<String> = None;
+        let elevation: Option<String> = None;
+
+        let result = viewparams::parse_time_elevation(&time, &elevation).unwrap();
+
+        let expected = HashMap::<String, Value>::new();
+        println!("parsed dimensions: {:?}", result);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_invalid_time_returns_error() {
+        let time = Some("2024-01-01".to_string()); // invalid
+        let elevation = None;
+
+        let result = viewparams::parse_time_elevation(&time, &elevation);
+        println!("parsed dimensions: {:?}", result);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Invalid time format. Expected YYYY-MM-DDThh:mm:ssZ"
         );
-
-        let layer_config_str = serde_json::to_string(&layer_config_json).unwrap();
-
-        let layer_config: crate::config::LayerConfig = serde_json::from_str(&layer_config_str).unwrap();
-
-        // println!("{:?}", &layer_config);
-
-        let workspace_id = "ihm";
-        let layer_id = "temperature";
-
-        let viewparams_hash = layer_config
-        .config
-        .assigned_viewparams
-        .as_ref()
-        .map(|vp| misc::hash_viewparams(vp));
-
-        let viewparams_hash = viewparams_hash.as_deref();
-
-        let layer_filepath = match misc::get_layer_filepath(&workspace_id, &layer_id, viewparams_hash) {
-            Ok(path) => path,
-            Err(e) => {
-                log::error!("Error getting layer filepath: {:?}", e);
-                String::new() // Return empty string on error, will be filtered out later
-            }
-        };
-        // test the query thingy
-        // let file = query_file(layer_filepath, layer_config).await;
-
-        let file = match queries::get_dataset_file(&LOCK_MAP, layer_filepath.clone(), layer_config.clone()).await{
-            Ok(f) => f,
-            Err(e) => panic!("Error querying file: {}", e),
-        };
-
-        println!("file succesfully downloaded {:?}", file);
     }
 
     #[test]
-    fn test_parse_and_lookup_elevation_cases() {
-        use std::collections::HashMap;
+    fn test_invalid_elevation_returns_error() {
+        let time = None;
+        let elevation = Some("10/0".to_string()); // invalid ordering
 
-        let bins: HashMap<String, [i32; 2]> = [
-            ("0-5", [0, 5]),
-            ("5-10", [5, 10]),
-            ("10-20", [10, 20]),
-            ("20-30", [20, 30]),
-            ("30-50", [30, 50]),
-            ("50-75", [50, 75]),
-            ("75-100", [75, 100]),
-            ("100-125", [100, 125]),
-            ("125-150", [125, 150]),
-            ("150-200", [150, 200]),
-            ("200-250", [200, 250]),
-            ("250-300", [250, 300]),
-            ("300-400", [300, 400]),
-            ("400-500", [400, 500]),
-            ("500-600", [500, 600]),
-            ("600-700", [600, 700]),
-            ("700-800", [700, 800]),
-            ("800-900", [800, 900]),
-            ("900-1000", [900, 1000]),
-            ("1000-1100", [1000, 1100]),
-            ("1100-1200", [1100, 1200]),
-            ("1200-1300", [1200, 1300]),
-            ("1300-1400", [1300, 1400]),
-            ("1400-1500", [1400, 1500]),
-            ("1500-1750", [1500, 1750]),
-            ("1750-2000", [1750, 2000]),
-            ("2000-2500", [2000, 2500]),
-            ("2500-3000", [2500, 3000]),
-            ("3000-3500", [3000, 3500]),
-            ("3500-4000", [3500, 4000]),
-            ("4000-4500", [4000, 4500]),
-            ("4500-5000", [4500, 5000]),
-            ("5000-12000", [5000, 12000]),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect();
-
-        // --- VALID CASES ---
-
-        let elevation_input = Some("10/20".to_string());
-        // let elevation_input = Some("20,30".to_string());
-        // let elevation_input = Some("50/75/5".to_string()); // step ignored
-        // let elevation_input = Some("-20/-10".to_string()); // abs → 10-20
-        // let elevation_input = Some(" 100 / 125 ".to_string()); // whitespace
-        // let elevation_input = Some("5000/12000".to_string()); // valid only if key exists exactly
-
-        // --- INVALID FORMAT ---
-
-        // let elevation_input = Some("10".to_string()); // single value
-        // let elevation_input = Some("10,20,30".to_string()); // too many values
-        // let elevation_input = Some("a/b".to_string()); // non-numeric
-        // let elevation_input = Some("".to_string()); // empty
-        // let elevation_input = None; // missing
-
-        // --- NON-MATCHING BINS ---
-
-        // let elevation_input = Some("0/20".to_string()); // spans multiple bins
-        // let elevation_input = Some("15/25".to_string()); // no exact match
-        // let elevation_input = Some("30/10".to_string()); // becomes 10-30 (invalid)
-        // let elevation_input = Some("75/110".to_string()); // partial overlap
-        // let elevation_input = Some("5000/6000".to_string()); // becomes 5000-6000 (not defined)
-
-        let result = viewparams::parse_ogc_elevation(&elevation_input);
-
-        println!("Result: {:?}", result);
-
-        // Adjust assertion depending on which case you test
-        assert!(result.is_ok());
-        // assert!(result.is_err());
+        let result = viewparams::parse_time_elevation(&time, &elevation);
+        println!("parsed dimensions: {:?}", result);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Invalid order of elevation, expected min/max"
+        );
     }
 
     #[test]
-    fn test_parse_ogc_time() {
-        // --- VALID CASES ---
+    fn test_invalid_time_short_circuits() {
+        let time = Some("bad".to_string());
+        let elevation = Some("0/10".to_string());
 
-        // let time_input = Some("1982-03-01T00:00:00Z/P1Y".to_string());
-        let time_input = Some("2000-12-15T23:59:59Z/P1M".to_string());
-        // let time_input = Some("1999-01-01T00:00:00Z/P1W".to_string());
-        // let time_input = Some(" 1984-02-01T00:00:00Z/P1D ".to_string()); // whitespace
-        // let time_input = Some("1999-01-01T00:00:00Z/P1H".to_string());
-
-        // --- INVALID FORMAT ---
-
-        // let time_input = Some("1982-03-01".to_string()); // missing time + Z
-        // let time_input = Some("1982-03-01 00:00:00Z".to_string()); // missing T
-        // let time_input = Some("1982-03-01T00:00:00".to_string()); // missing Z
-        // let time_input = Some("1982-03-01T00:00Z".to_string()); // missing seconds
-        // let time_input = Some("1982-03-01T00:00:00+01:00".to_string()); // timezone offset not allowed
-        // let time_input = Some("1982-03-01T00:00:00.123Z".to_string()); // milliseconds not allowed
-        // let time_input = Some("1982-13-01T00:00:00Z".to_string()); // invalid month
-        // let time_input = Some("1982-02-30T00:00:00Z".to_string()); // invalid day
-        // let time_input = Some("not-a-date".to_string()); // garbage input
-        // let time_input = Some("".to_string()); // empty string
-        // let time_input = None; // missing input
-
-        // --- UNSUPPORTED CASES ---
-
-        // let time_input = Some("1982-03-01T00:00:00Z/1982-03-01T00:00:00Z".to_string()); // range
-        // let time_input = Some("1982-03-01T00:00:00Z,1982-03-01T00:00:00Z".to_string()); // list
-
-        let result = viewparams::parse_ogc_time(&time_input);
-
-        println!("Result: {:?}", result);
-
-        // Toggle depending on case
-        assert!(result.is_ok());
-        // assert!(result.is_err());
+        let result = viewparams::parse_time_elevation(&time, &elevation);
+        println!("parsed dimensions: {:?}", result);
+        // should fail fast on time, elevation ignored
+        assert!(result.is_err());
     }
 
+    #[test]
+    fn test_invalid_elevation_short_circuits() {
+        let time = Some("2024-01-01T12:00:00Z".to_string());
+        let elevation = Some("a/b".to_string());
+
+        let result = viewparams::parse_time_elevation(&time, &elevation);
+        println!("parsed dimensions: {:?}", result);
+        assert!(result.is_err());
+    }
+
+    // negative elevation values
+    #[test]
+    fn test_valid_negative_elevation() {
+        let time = None;
+        let elevation = Some("-20/-10".to_string()); // invalid ordering
+
+        let result = viewparams::parse_time_elevation(&time, &elevation).unwrap();
+
+        let mut expected = HashMap::<String, Value>::new();
+        expected.insert("elevation".to_string(), Value::String("10/20".to_string()));
+        println!("parsed dimensions: {:?}", result);
+        assert_eq!(result, expected);
+    }
 }
