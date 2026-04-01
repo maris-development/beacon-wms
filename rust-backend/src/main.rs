@@ -127,27 +127,6 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
             }
         };
 
-    // this out hashmap might be skipped depending on the solution
-    let queryparams: HashMap<String, Value> = [
-        (
-            "viewparams".to_string(),
-            Value::Object(requested_viewparams.into_iter().collect()),
-        ),
-        (
-            "dimensionparams".to_string(),
-            Value::Object(requested_dimensions.into_iter().collect()),
-        ),
-    ]
-    .into_iter()
-    .collect();
-
-    // now what????
-    // time is bothering me soo much because the dimension does not match with the viewparams
-    // how are we supposed to know if we need the year, month, day?
-    // because in the query we are supposed to insert year, or year and month, or year, month and day.
-    // we don't just replace the entire date value
-    // how are we making sure this does not just throw an error for any layer?
-
     // should bbox be in the view params?
     let bounding_box = match BoundingBox::from_string(
         get_map_params.bbox.as_str(),
@@ -215,16 +194,34 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
         .cloned()
         .collect::<Vec<config::LayerConfig>>();
 
-    // assing viewparams and dimension params to layer
-    match viewparams::assign_viewparams_in_config(&mut layers_configs, &requested_viewparams)
-        .await {
-            Ok(_) => {},
-            Err((status, msg)) => {
-                log::error!("Error assigning viewparams: {}", msg);
-                return (status, msg).into_response()
+    // check dimensions and apply dimensions and viewparams to layer config
+    for layer in layers_configs.iter_mut() {
+        // 1. Apply dimensions for this specific layer
+        let applied_viewparams = match viewparams::apply_dimensions_to_viewparams(
+            &requested_viewparams,
+            &requested_dimensions,
+            &layer.config.dimensions,
+            &layer.id,
+        ) {
+            Ok(vp) => vp,
+            Err(e) => {
+                log::error!("Dimension error for layer {}: {}", layer.id, e);
+                return (StatusCode::BAD_REQUEST, e).into_response();
             }
-        }
+        };
 
+        // 2. Assign into the same layer (in-place mutation)
+        if let Err((status, msg)) =
+            viewparams::assign_viewparams_in_config(layer, &applied_viewparams).await
+        {
+            log::error!(
+                "Viewparams assignment failed for layer {}: {}",
+                layer.id,
+                msg
+            );
+            return (status, msg).into_response();
+        }
+    }
 
     let mut styles = match &get_map_params.styles {
         Some(s) => String::from(s),
@@ -399,6 +396,14 @@ async fn get_feature_info(
 
     let requested_viewparams: HashMap<String, Value> = viewparams::parse_viewparams(&get_feature_info_params.viewparams);
 
+    let requested_dimensions: HashMap<String, Value> =
+    match viewparams::parse_time_elevation(&get_feature_info_params.time, &get_feature_info_params.elevation) {
+        Ok(map) => map,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, e).into_response();
+        }
+    };
+
     let bounding_box = match BoundingBox::from_string(
         get_feature_info_params.bbox.as_str(),
         get_feature_info_params.crs.as_str(),
@@ -494,10 +499,34 @@ async fn get_feature_info(
         .cloned()
         .collect::<Vec<config::LayerConfig>>();
 
-    viewparams::assign_viewparams_in_config(&mut layers_configs, &requested_viewparams)
-        .await.map_err(|(status, msg)| {
+    // check dimensions and apply dimensions and viewparams to layer config
+    for layer in layers_configs.iter_mut() {
+        // 1. Apply dimensions for this specific layer
+        let applied_viewparams = match viewparams::apply_dimensions_to_viewparams(
+            &requested_viewparams,
+            &requested_dimensions,
+            &layer.config.dimensions,
+            &layer.id,
+        ) {
+            Ok(vp) => vp,
+            Err(e) => {
+                log::error!("Dimension error for layer {}: {}", layer.id, e);
+                return (StatusCode::BAD_REQUEST, e).into_response();
+            }
+        };
+
+        // 2. Assign into the same layer (in-place mutation)
+        if let Err((status, msg)) =
+            viewparams::assign_viewparams_in_config(layer, &applied_viewparams).await
+        {
+            log::error!(
+                "Viewparams assignment failed for layer {}: {}",
+                layer.id,
+                msg
+            );
             return (status, msg).into_response();
-        }).unwrap();
+        }
+    }
 
     let mut feature_info_results: Vec<Feature> = Vec::new();
 
@@ -707,12 +736,17 @@ async fn available_styles() -> impl IntoResponse {
 }
 
 
+// =========================================================================
+// TESTS
 
+
+// =========================================================================
+// parse dimensions
 
 #[cfg(test)]
-mod tests {
+mod test_parse_dimensions {
     use super::*;
-    use serde_json::{Value, json};
+    use serde_json::{Value};
     use std::collections::HashMap;
 
     #[test]
@@ -831,4 +865,260 @@ mod tests {
         println!("parsed dimensions: {:?}", result);
         assert_eq!(result, expected);
     }
+}
+
+// =========================================================================
+// check dimensions
+
+#[cfg(test)]
+mod test_check_dimensions {
+    use super::*;
+    use serde_json::{json};
+    use std::collections::HashMap;
+
+    fn sample_layer_dimensions() -> HashMap<String, serde_json::Value> {
+        serde_json::from_value(json!({
+            "time": {
+                "default": "2021-01-01T00:00:00Z",
+                "units": "ISO8601",
+                "accepted": "R500/1950-01-01T00:00:00Z/P1Y"
+            },
+            "elevation": {
+                "default": "0-5",
+                "units": "m",
+                "viewparam": "depth",
+                "accepted": [
+                    "0-5",
+                    "5-10",
+                    "10-20",
+                    "20-30",
+                    "30-50",
+                    "50-75",
+                    "75-100",
+                    "100-125",
+                    "125-150",
+                    "150-200",
+                    "200-250",
+                    "250-300",
+                    "300-400",
+                    "400-500",
+                    "500-600",
+                    "600-700",
+                    "700-800",
+                    "800-900",
+                    "900-1000",
+                    "1000-1100",
+                    "1100-1200",
+                    "1200-1300",
+                    "1300-1400",
+                    "1400-1500",
+                    "1500-1750",
+                    "1750-2000",
+                    "2000-2500",
+                    "2500-3000",
+                    "3000-3500",
+                    "3500-4000",
+                    "4000-4500",
+                    "4500-5000",
+                    "5000-12000"
+                ]
+            }
+        }))
+        .unwrap()
+    }
+
+    // elevation
+    #[test]
+    fn test_valid_elevation_returns_range() {
+        let dims = sample_layer_dimensions();
+
+        let result = viewparams::check_accepted_elevations(
+            "5-10",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_ok());
+
+        let range = result.unwrap();
+        assert_eq!(range.len(), 2);
+    }
+
+    #[test]
+    fn test_invalid_elevation_not_allowed() {
+        let dims = sample_layer_dimensions();
+
+        let result = viewparams::check_accepted_elevations(
+            "9999-10000",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "requested elevation not allowed for this layer testlayer"
+        );
+    }
+
+    #[test]
+    fn test_missing_elevation_dimension() {
+        let mut dims = sample_layer_dimensions();
+        dims.remove("elevation");
+
+        let result = viewparams::check_accepted_elevations(
+            "0-5",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "elevation dimension not allowed"
+        );
+    }
+
+    #[test]
+    fn test_accepted_not_array() {
+        let mut dims = sample_layer_dimensions();
+
+        dims.get_mut("elevation").map(|e| {
+            if let Some(obj) = e.as_object_mut() {
+                obj.insert(
+                    "accepted".to_string(),
+                    serde_json::Value::String("0-5".to_string()),
+                );
+            }
+        });
+
+        let result = viewparams::check_accepted_elevations(
+            "0-5",
+            &dims,
+            "testlayer",
+        );
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "elevation dimension in config must be an array"
+        );
+    }
+
+    // time
+    #[test]
+    fn test_valid_time_start_of_range() {
+        let dims = sample_layer_dimensions();
+
+        let result = viewparams::check_accepted_times(
+            "1950-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_ok());
+
+        let map = result.unwrap();
+        assert_eq!(map.get("year").unwrap(), &serde_json::json!(1950));
+    }
+
+    #[test]
+    fn test_valid_time_within_range() {
+        let dims = sample_layer_dimensions();
+
+        let result = viewparams::check_accepted_times(
+            "1955-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_ok());
+
+        let map = result.unwrap();
+        assert_eq!(map.get("year").unwrap(), &serde_json::json!(1955));
+    }
+
+    #[test]
+    fn test_time_outside_range() {
+        let dims = sample_layer_dimensions();
+
+        let result = viewparams::check_accepted_times(
+            "2050-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "date not accepted for layer testlayer"
+        );
+    }
+
+    #[test]
+    fn test_missing_time_dimension() {
+        let mut dims = sample_layer_dimensions();
+        dims.remove("time");
+
+        let result = viewparams::check_accepted_times(
+            "1950-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "time dimension not allowed"
+        );
+    }
+
+    #[test]
+    fn test_invalid_time_format() {
+        let dims = sample_layer_dimensions();
+
+        let result = viewparams::check_accepted_times(
+            "1950/01/01",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+    }    
+
+    #[test]
+    fn test_time_boundary_last_valid_year() {
+        let dims = sample_layer_dimensions();
+
+        let result = viewparams::check_accepted_times(
+            "1999-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_ok());
+
+        let map = result.unwrap();
+        assert_eq!(map.get("year").unwrap(), &serde_json::json!(1999));
+    }
+
 }

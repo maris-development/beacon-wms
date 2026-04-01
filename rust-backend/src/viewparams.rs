@@ -1,13 +1,14 @@
 use std::collections::HashMap;
-
-// use reqwest::StatusCode;
-// use std::str::FromStr;
-
-// use chrono::{DateTime, Utc, Datelike, NaiveDate, Duration};
-use serde_json::{Value, json};
-use axum::response::{IntoResponse, Response};
+use serde_json::{Value};
 use axum::http::StatusCode;
+use chrono::{DateTime, Utc, Datelike, Duration};
 
+use crate::{
+    boundingbox::BoundingBox, color_maps::ColorMapsConfig, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, query_parameters::{GetFeatureInfoRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling
+};
+
+// ============================================
+// Viewparams
 
 
 pub fn parse_viewparams(viewparams: &Option<String>) -> HashMap<String, Value> {
@@ -32,36 +33,59 @@ pub fn parse_viewparams(viewparams: &Option<String>) -> HashMap<String, Value> {
     }
 }
 
+// pub async fn assign_viewparams_in_config(
+//     layer_configs: &mut Vec<crate::config::LayerConfig>,
+//     viewparams: &HashMap<String, Value>,
+// ) -> Result<(), (StatusCode, String)> {
+
+//     for layer_config in layer_configs {
+//         // Ensure assigned_viewparams exists (with defaults if present)
+//         let assigned_viewparams = layer_config
+//             .config
+//             .assigned_viewparams
+//             .get_or_insert_with(HashMap::new);
+
+//         // If there are allowed viewparams, validate & assign requested ones
+//         if let Some(allowed) = &layer_config.config.available_viewparams {
+//             if let Err((status, msg)) = self::assign_viewparams(
+//                 allowed,
+//                 assigned_viewparams,       // mutable reference to defaults
+//                 viewparams      // user input to overwrite defaults
+//             ).await {
+//                 return Err((status, msg));  // stop immediately on invalid input
+//             }
+//         }
+//         // assigned_viewparams now contains defaults + any valid input
+//     }
+
+//     Ok(())
+// }
+
 pub async fn assign_viewparams_in_config(
-    layer_configs: &mut Vec<crate::config::LayerConfig>,
+    layer_config: &mut LayerConfig,
     viewparams: &HashMap<String, Value>,
 ) -> Result<(), (StatusCode, String)> {
 
-    for layer_config in layer_configs {
-        // Ensure assigned_viewparams exists (with defaults if present)
-        let assigned_viewparams = layer_config
-            .config
-            .assigned_viewparams
-            .get_or_insert_with(HashMap::new);
+    // Ensure assigned_viewparams exists (with defaults if present)
+    let assigned_viewparams = layer_config
+        .config
+        .assigned_viewparams
+        .get_or_insert_with(HashMap::new);
 
-        // If there are allowed viewparams, validate & assign requested ones
-        if let Some(allowed) = &layer_config.config.available_viewparams {
-            if let Err((status, msg)) = self::assign_viewparams(
-                allowed,
-                assigned_viewparams,       // mutable reference to defaults
-                viewparams      // user input to overwrite defaults
-            ).await {
-                return Err((status, msg));  // stop immediately on invalid input
-            }
+    // If there are allowed viewparams, validate & assign requested ones
+    if let Some(allowed) = &layer_config.config.available_viewparams {
+        if let Err((status, msg)) = self::assign_viewparams(
+            allowed,
+            assigned_viewparams,       // mutable reference to defaults
+            viewparams      // user input to overwrite defaults
+        ).await {
+            return Err((status, msg));  // stop immediately on invalid input
         }
-        // assigned_viewparams now contains defaults + any valid input
     }
+    // assigned_viewparams now contains defaults + any valid input
 
     Ok(())
 }
-
-
-
 
 /**
  * Resolves and validates viewparams from the request against the allowed parameters defined in the config.
@@ -73,8 +97,6 @@ pub async fn assign_viewparams(
     assigned: &mut HashMap<String, Value>,
     input: &HashMap<String, Value>,
 ) -> Result<(), (StatusCode, String)> {
-
-    // EDIT: we should also add the allowed depths here and check them
 
     for (param, value) in input {
         // Parameter must exist in allowed config
@@ -117,14 +139,14 @@ pub async fn assign_viewparams(
         if param == "depth" {
             if let Some(allowed_bins) = expected.get("allowed") {
                 let arr = value.as_array().unwrap();
-                let min = arr[0].as_i64().unwrap() as i32;
-                let max = arr[1].as_i64().unwrap() as i32;
+                let min = arr[0].as_f64().unwrap() as i32;
+                let max = arr[1].as_f64().unwrap() as i32;
             
                 let valid_bin = allowed_bins.as_object()
                     .map(|bins| bins.values().any(|v| {
                         let v_arr = v.as_array().unwrap();
-                        let v_min = v_arr[0].as_i64().unwrap() as i32;
-                        let v_max = v_arr[1].as_i64().unwrap() as i32;
+                        let v_min = v_arr[0].as_f64().unwrap() as i32;
+                        let v_max = v_arr[1].as_f64().unwrap() as i32;
                         min == v_min && max == v_max
                     }))
                     .unwrap_or(false);
@@ -238,6 +260,8 @@ pub fn apply_viewparams_to_query(
 // if time is invalid return error (only accept single time values)
 // if elevation is empty string don't add to hashmap
 
+// ==================================================
+// Dimensions
 
 use regex::Regex;
 
@@ -324,4 +348,258 @@ pub fn parse_time_elevation(
     }
 
     Ok(map)
+}
+
+// check if elevation is accepted by layer
+pub fn check_accepted_elevations(
+    requested_elevation: &str,
+    layer_dimensions: &HashMap<String, Value>,
+    layername: &str,
+) -> Result<Vec<Value>, String> {
+    // Check if elevation exists in config
+    let elevation = layer_dimensions
+        .get("elevation")
+        .ok_or_else(|| "elevation dimension not allowed".to_string())?;
+
+    let elevation_obj = elevation
+        .as_object()
+        .ok_or_else(|| "elevation dimension must be an object".to_string())?;
+
+    // Check accepted is array
+    let accepted = elevation_obj
+        .get("accepted")
+        .ok_or_else(|| "elevation dimension not allowed".to_string())?
+        .as_array()
+        .ok_or_else(|| "elevation dimension in config must be an array".to_string())?;
+
+    // Validate requested value is in accepted list
+    let is_valid = accepted.iter().any(|v| {
+        v.as_str()
+            .map(|s| s.trim() == requested_elevation.trim())
+            .unwrap_or(false)
+    });
+
+    if !is_valid {
+        return Err(format!("requested elevation not allowed for this layer {}", layername));
+    }
+
+    // Parse "min-max"
+    let parts: Vec<&str> = requested_elevation.split('/').collect();
+    if parts.len() != 2 {
+        return Err("invalid elevation format".to_string());
+    }
+
+    let min: f64 = parts[0]
+        .trim()
+        .parse()
+        .map_err(|_| "invalid elevation format".to_string())?;
+
+    let max: f64 = parts[1]
+        .trim()
+        .parse()
+        .map_err(|_| "invalid elevation format".to_string())?;
+
+    Ok(vec![Value::from(min), Value::from(max)])
+}
+
+
+// check if time dimension is accepted by layer
+pub fn check_accepted_times(
+    requested_time: &str,
+    layer_dimensions: &HashMap<String, Value>,
+    layername: &str,
+) -> Result<HashMap<String, Value>, String> {
+
+    //===============================
+    // layer dimension
+
+    // check if time dimension is inside the layer config dimensions and if format in the layer config is correct
+    let time = layer_dimensions
+        .get("time")
+        .ok_or_else(|| "time dimension not allowed".to_string())?;
+    let time_obj = time
+        .as_object()
+        .ok_or_else(|| "time dimension must be an object".to_string())?;
+    let accepted = time_obj
+        .get("accepted")
+        .ok_or_else(|| "time dimension not allowed".to_string())?
+        .as_str()
+        .ok_or_else(|| "time dimension in config must be a string".to_string())?;
+
+    let parts: Vec<&str> = accepted.split('/').collect();
+    if parts.len() != 3 {
+        return Err(format!(
+            "time format in layer {} does not conform to Rn/YYYY-MM-DDThh:mm:ssZ/interval",
+            layername
+        ));
+    }
+
+    // Enforce Rn (no infinite allowed)
+    let repeat_str = parts[0];
+    if !repeat_str.starts_with('R') || repeat_str.len() <= 1 {
+        return Err(format!(
+            "time format in layer {} does not conform to Rn/YYYY-MM-DDThh:mm:ssZ/interval",
+            layername
+        ));
+    }
+
+    let repeat: u32 = repeat_str[1..]
+        .parse()
+        .map_err(|_| format!(
+            "time format in layer {} does not conform to Rn/YYYY-MM-DDThh:mm:ssZ/interval",
+            layername
+        ))?;
+
+    if repeat == 0 {
+        return Err(format!(
+            "time format in layer {} does not conform to Rn/YYYY-MM-DDThh:mm:ssZ/interval",
+            layername
+        ));
+    }
+
+    let start: DateTime<Utc> = parts[1]
+        .parse()
+        .map_err(|_| format!(
+            "time format in layer {} does not conform to Rn/YYYY-MM-DDThh:mm:ssZ/interval",
+            layername
+        ))?;
+
+    let period_str = parts[2];
+
+    let unit = match period_str {
+        "P1Y" => "year",
+        "P1M" => "month",
+        "P1D" => "day",
+        _ => {
+            return Err(format!(
+                "time format in layer {} does not conform to Rn/YYYY-MM-DDThh:mm:ssZ/interval",
+                layername
+            ))
+        }
+    };
+
+    //==================================
+    // requested time
+
+    // parse requested time
+    let requested: DateTime<Utc> = requested_time
+        .parse()
+        .map_err(|_| "invalid requested time format".to_string())?;
+
+    // must requested time must atleast be greater equel than dimension accepted start of range
+    if requested < start {
+        return Err(format!("date not accepted for layer {}", layername));
+    }
+
+    let mut current = start;
+
+    for _ in 0..repeat {
+        if current == requested {
+            break;
+        }
+
+        current = match unit {
+            "year" => current.with_year(current.year() + 1).ok_or("invalid date")?,
+            "month" => {
+                let mut y = current.year();
+                let mut m = current.month() as i32 + 1;
+
+                if m > 12 {
+                    y += 1;
+                    m -= 12;
+                }
+
+                current
+                    .with_year(y)
+                    .and_then(|d| d.with_month(m as u32))
+                    .ok_or("invalid date")?
+            }
+            "day" => current + Duration::days(1),
+            _ => unreachable!(),
+        };
+
+        if current == requested {
+            break;
+        }
+    }
+
+    if current != requested {
+        return Err(format!("date not accepted for layer {}", layername));
+    }
+
+    let mut result = HashMap::new();
+
+    match unit {
+        "year" => {
+            result.insert("year".to_string(), Value::from(requested.year()));
+        }
+        "month" => {
+            result.insert("year".to_string(), Value::from(requested.year()));
+            result.insert("month".to_string(), Value::from(requested.month()));
+        }
+        "day" => {
+            result.insert("year".to_string(), Value::from(requested.year()));
+            result.insert("month".to_string(), Value::from(requested.month()));
+            result.insert("day".to_string(), Value::from(requested.day()));
+        }
+        _ => {}
+    }
+
+    Ok(result)
+}
+
+
+pub fn apply_dimensions_to_viewparams(
+    requested_viewparams: &HashMap<String, Value>,
+    requested_dimensions: &HashMap<String, Value>,
+    layer_dimensions: &Option<HashMap<String, Value>>,
+    layername: &str,
+) -> Result<HashMap<String, Value>, String> {
+    // 1. Extract layer_dimensions or fallback to empty map
+    let empty_map = HashMap::new();
+    let layer_dims = layer_dimensions.as_ref().unwrap_or(&empty_map);
+
+    // 2. Both empty → return original viewparams
+    if layer_dims.is_empty() && requested_dimensions.is_empty() {
+        return Ok(requested_viewparams.clone());
+    }
+
+    // 3. Layer has no dimensions but request does → error
+    if layer_dims.is_empty() && !requested_dimensions.is_empty() {
+        return Err(format!("layer {} does not accept any dimensions", layername));
+    }
+
+    // 4. Both non-empty → apply logic
+    let mut result = requested_viewparams.clone();
+
+    // Elevation
+    if let Some(elevation_value) = requested_dimensions.get("elevation") {
+        let elevation_str = elevation_value
+            .as_str()
+            .ok_or_else(|| "elevation must be a string".to_string())?;
+
+        let parsed = check_accepted_elevations(
+            elevation_str,
+            layer_dims,
+            layername,
+        )?;
+
+        result.insert("depth".to_string(), Value::Array(parsed));
+    }
+
+    // Time
+    if let Some(time_value) = requested_dimensions.get("time") {
+        let time_str = time_value
+            .as_str()
+            .ok_or_else(|| "time must be a string".to_string())?;
+
+        let parsed_time =
+            check_accepted_times(time_str, layer_dims, layername)?;
+
+        for (k, v) in parsed_time {
+            result.insert(k, v);
+        }
+    }
+
+    Ok(result)
 }

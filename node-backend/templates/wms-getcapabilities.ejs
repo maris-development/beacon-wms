@@ -95,25 +95,22 @@
                             <Title><%= style.description %> (shape: <%= layer.config.shape %>)</Title>
                         </Style>
                     <% }); %>
-                    <% Object.entries(layer.config.dimension).forEach(function([name, dimension]) { %>
-                      <Dimension name="<%= name %>" default="<%= dimension.default %>" units="<%= dimension.units %>">                 
-                        <%= dimension.accepted.join(',') %>
+                    
+                    <% Object.entries(layer.config.dimensions).forEach(function([name, dimension]) { %>
+                      <Dimension 
+                        name="<%= name %>" 
+                        default="<%= dimension.default %>" 
+                        units="<%= dimension.units %>">
+                    
+                        <% if (Array.isArray(dimension.accepted)) { %>
+                          <%- dimension.accepted.join(',') -%>
+                        <% } else { %>
+                          <%= dimension.accepted %>
+                        <% } -%>
                       </Dimension>
                     <% }); %>
-                    <% Object.entries(layer.config.available_viewparams).forEach(function([name, param]) { %>
-                      <ViewParam>
-                        <Name><%= name %></Name>
-                        <Type><%= param.type %></Type>
+                       
                     
-                        <% if (param.format) { %>
-                          <Format><%= Array.isArray(param.format) ? param.format.join(',') : param.format %></Format>
-                        <% } %>
-                        
-                        <% if (param.allowed) { %>
-                          <Allowed><%= Object.keys(param.allowed).join(',') %></Allowed>
-                        <% } %>
-                      </ViewParam>
-                    <% }); %>                   
                 </Layer>
             <% }); %>
         </Layer>

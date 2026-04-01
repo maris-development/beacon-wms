@@ -34,7 +34,7 @@ pub struct LayerConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LayerInnerConfig {
-    pub dimensions: Option<HashMap<String, DimensionConfig>>,
+    pub dimensions: Option<HashMap<String, Value>>,
 
     pub available_viewparams: Option<HashMap<String, Value>>,
 
@@ -50,14 +50,3 @@ pub struct LayerInnerConfig {
     pub shape: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DimensionConfig {
-    pub accepted: Option<AcceptedValues>
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(untagged)]
-pub enum AcceptedValues {
-    Single(String),
-    Multiple(Vec<String>),
-}

@@ -1,4 +1,4 @@
-use crate::{boundingbox::BoundingBox, config::AcceptedValues};
+use crate::{boundingbox::BoundingBox};
 use crate::errors::MapError;
 use arrow::{array::{Array, PrimitiveArray, AsArray, Float64Array, Int64Array, StringArray}};
 use arrow::datatypes::{Float32Type, Float64Type, Int16Type, Int32Type, Int8Type};
@@ -590,6 +590,7 @@ pub fn read_config_file() -> crate::config::ConfigFile {
         std::fs::read_to_string(config_file_location).expect("Failed to read config file");
     let mut parsed: crate::config::ConfigFile = serde_json::from_str(&json_str).unwrap();
 
+    // redundant
     // if parsed.workspaces.is_some() {
     //     for mut workspace in parsed.workspaces.expect("") {
     //         for mut layer_config in workspace.layers {
