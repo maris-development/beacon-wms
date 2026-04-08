@@ -33,34 +33,6 @@ pub fn parse_viewparams(viewparams: &Option<String>) -> HashMap<String, Value> {
     }
 }
 
-// pub async fn assign_viewparams_in_config(
-//     layer_configs: &mut Vec<crate::config::LayerConfig>,
-//     viewparams: &HashMap<String, Value>,
-// ) -> Result<(), (StatusCode, String)> {
-
-//     for layer_config in layer_configs {
-//         // Ensure assigned_viewparams exists (with defaults if present)
-//         let assigned_viewparams = layer_config
-//             .config
-//             .assigned_viewparams
-//             .get_or_insert_with(HashMap::new);
-
-//         // If there are allowed viewparams, validate & assign requested ones
-//         if let Some(allowed) = &layer_config.config.available_viewparams {
-//             if let Err((status, msg)) = self::assign_viewparams(
-//                 allowed,
-//                 assigned_viewparams,       // mutable reference to defaults
-//                 viewparams      // user input to overwrite defaults
-//             ).await {
-//                 return Err((status, msg));  // stop immediately on invalid input
-//             }
-//         }
-//         // assigned_viewparams now contains defaults + any valid input
-//     }
-
-//     Ok(())
-// }
-
 pub async fn assign_viewparams_in_config(
     layer_config: &mut LayerConfig,
     viewparams: &HashMap<String, Value>,
@@ -266,9 +238,15 @@ pub fn apply_viewparams_to_query(
 use regex::Regex;
 
 /// Strict ISO 8601: YYYY-MM-DDThh:mm:ssZ
+/// This currently does not accept values with ms precision or timezone offsets
 fn parse_ogc_time(time: &str) -> Result<String, String> {
-    let re = Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
-        .map_err(|_| "Internal regex error".to_string())?;
+    // let re = Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+    //     .map_err(|_| "Internal regex error".to_string())?;
+
+    // with optional ms precision
+    // not timezone offset because we don't want that
+    let re = Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
+        .map_err(|_| "Internal regex error".to_string())?; 
 
     if re.is_match(time) {
         Ok(time.to_string())

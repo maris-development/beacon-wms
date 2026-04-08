@@ -22,9 +22,9 @@
                     "config": {
                         "dimensions": {
                             "time": {
-                                "default": "2021-01-01T00:00:00Z",
+                                "default": "2021-01-01T00:00:00.000Z",
                                 "units": "ISO8601",
-                                "accepted": "R75/1950-01-01T00:00:00Z/P1Y"
+                                "accepted": "R75/1950-01-01T00:00:00.000Z/P1Y"
                             },
                             "elevation": {
                                 "default": "0/5",
