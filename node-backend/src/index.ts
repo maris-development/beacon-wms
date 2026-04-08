@@ -27,9 +27,15 @@ app.get(routes.root.getRoute(), homepage);
 app.get(routes.defaultWms.getRoute(), defaultWms);
 app.get(routes.workspaceWms.getRoute(), workspaceWms);
 app.get(routes.updateLayers.getRoute(), updateLayers);
-app.listen(http_port, http_address, () => {
+
+const server = app.listen(http_port, http_address, () => {
   logger.info(`Node backend listening at http://${http_address}:${http_port}`);
   logger.info(`Template dir: ${template_dir}`);
+});
+
+server.on("error", (err: NodeJS.ErrnoException) => {
+  logger.error(`Failed to bind to ${http_address}:${http_port} — ${err.message} (code: ${err.code})`);
+  process.exit(1);
 });
 
 
