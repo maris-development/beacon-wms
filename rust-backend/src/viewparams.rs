@@ -511,9 +511,30 @@ pub fn check_accepted_times(
         "year" => {
             result.insert("year".to_string(), Value::from(requested.year()));
         }
-        "month" => {
-            result.insert("year".to_string(), Value::from(requested.year()));
-            result.insert("month".to_string(), Value::from(requested.month()));
+       "month" => {
+           let year = requested.year();
+           let month = requested.month();
+        
+           // compute next month
+           let (next_year, next_month) = if month == 12 {
+               (year + 1, 1)
+           } else {
+               (year, month + 1)
+           };
+        
+           // first day of next month
+           let first_next_month = requested
+               .with_year(next_year)
+               .and_then(|d| d.with_month(next_month))
+               .and_then(|d| d.with_day(1))
+               .ok_or("invalid date")?;
+        
+           // last day of current month
+           let last_day = (first_next_month - Duration::days(1)).day();
+        
+           result.insert("year".to_string(), Value::from(year));
+           result.insert("month".to_string(), Value::from(month));
+           result.insert("day".to_string(), Value::from(last_day));
         }
         "day" => {
             result.insert("year".to_string(), Value::from(requested.year()));

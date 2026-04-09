@@ -18,7 +18,7 @@
             "layers": [
                 {
                     "id": "temperature-yearly",
-                    "name": "default temperature",
+                    "name": "default temperature yearly",
                     "config": {
                         "dimensions": {
                             "time": {
@@ -29,7 +29,6 @@
                             "elevation": {
                                 "default": "0/5",
                                 "units": "m",
-                                "viewparam": "depth (refereert naar available_viewparams depth allowed in wms xml en controlere van dimensions",
                                 "accepted": [
                                     "0/5",
                                     "5/10",
@@ -118,12 +117,1672 @@
                         "default_style": "thermal",
                         "instance_url": "https://beacon-cdi.maris.nl/",
                         "token": "",
-                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"TEMPPR01","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"subsurface_temperature","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+                {
+                    "id": "temperature-monthly",
+                    "name": "default temperature monthly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R900/1950-01-01T00:00:00.000Z/P1M"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "month": {"type": "numeric", "format": "mm"},
+                            "day": {"type": "numeric", "format": "dd"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "month": 1,
+                            "day": 31,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "thermal",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"subsurface_temperature","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+
+                {
+                    "id": "oxygen-yearly",
+                    "name": "default oxygen yearly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R75/1950-01-01T00:00:00.000Z/P1Y"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "oxy",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"oxygen","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+                {
+                    "id": "oxygen-monthly",
+                    "name": "default oxygen monthly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R900/1950-01-01T00:00:00.000Z/P1M"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "month": {"type": "numeric", "format": "mm"},
+                            "day": {"type": "numeric", "format": "dd"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "month": 1,
+                            "day": 31,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "oxy",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"oxygen","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+
+                {
+                    "id": "ph-yearly",
+                    "name": "default ph yearly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R75/1950-01-01T00:00:00.000Z/P1Y"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "oxy",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"PHXXPR01","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+                {
+                    "id": "ph-monthly",
+                    "name": "default ph monthly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R900/1950-01-01T00:00:00.000Z/P1M"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "month": {"type": "numeric", "format": "mm"},
+                            "day": {"type": "numeric", "format": "dd"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "month": 1,
+                            "day": 31,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "oxy",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"PHXXPR01","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+
+                {
+                    "id": "silicate-yearly",
+                    "name": "default silicate yearly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R75/1950-01-01T00:00:00.000Z/P1Y"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "dense",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["SLCAKGD1","SLCAMS01","SLKGAATX","MDMAP012","SLCAAAD5","SLCAAAD2","SLCAAAD3","SLCAAAD1","SLCAAADZ","SLCAAATX","SLCANS01","SLCAMATX","SLCAZZXX","SLCAAAZX","SLCAMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+                {
+                    "id": "silicate-monthly",
+                    "name": "default silicate monthly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R900/1950-01-01T00:00:00.000Z/P1M"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "month": {"type": "numeric", "format": "mm"},
+                            "day": {"type": "numeric", "format": "dd"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "month": 1,
+                            "day": 31,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "dense",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["SLCAKGD1","SLCAMS01","SLKGAATX","MDMAP012","SLCAAAD5","SLCAAAD2","SLCAAAD3","SLCAAAD1","SLCAAADZ","SLCAAATX","SLCANS01","SLCAMATX","SLCAZZXX","SLCAAAZX","SLCAMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+
+                {
+                    "id": "phosphate-yearly",
+                    "name": "default phosphate yearly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R75/1950-01-01T00:00:00.000Z/P1Y"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "oxy",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["PHOSLWTX","PHOSMS01","PHKGAATX","MDMAP906","PHOSAAD5","PHOSAAD2","PHOSMAD2","PHOSAA01","PHOSAAD3","PHOSAAD1","PHOSMAD1","PHOSAADZ","PHOSMADZ","PHOSYYDZ","PHOSAATX","PHOSMATX","PHOSZZXX","PHOSAAZX","PHOSMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+                {
+                    "id": "phosphate-monthly",
+                    "name": "default phosphate monthly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R900/1950-01-01T00:00:00.000Z/P1M"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "month": {"type": "numeric", "format": "mm"},
+                            "day": {"type": "numeric", "format": "dd"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "month": 1,
+                            "day": 31,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "oxy",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["PHOSLWTX","PHOSMS01","PHKGAATX","MDMAP906","PHOSAAD5","PHOSAAD2","PHOSMAD2","PHOSAA01","PHOSAAD3","PHOSAAD1","PHOSMAD1","PHOSAADZ","PHOSMADZ","PHOSYYDZ","PHOSAATX","PHOSMATX","PHOSZZXX","PHOSAAZX","PHOSMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+                
+
+                {
+                    "id": "nitrate-yearly",
+                    "name": "default nitrate yearly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R75/1950-01-01T00:00:00.000Z/P1Y"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "thermal",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRAMS02","MDMAP005","ODSDM2UM","NTRAAA04","NTRAAAD1","NTRTFSG1","NTRAXXDZ","ODSDM014","NO3FLTIC","NTRAMADZ","NTRAYYDZ","CHEMM012","NTRZMC01","NTRZMS01","NTRAZZXX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+                {
+                    "id": "nitrate-monthly",
+                    "name": "default nitrate monthly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R900/1950-01-01T00:00:00.000Z/P1M"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "month": {"type": "numeric", "format": "mm"},
+                            "day": {"type": "numeric", "format": "dd"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "month": 1,
+                            "day": 31,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "thermal",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRAMS02","MDMAP005","ODSDM2UM","NTRAAA04","NTRAAAD1","NTRTFSG1","NTRAXXDZ","ODSDM014","NO3FLTIC","NTRAMADZ","NTRAYYDZ","CHEMM012","NTRZMC01","NTRZMS01","NTRAZZXX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+
+                {
+                    "id": "nitrite-yearly",
+                    "name": "default nitrite yearly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R75/1950-01-01T00:00:00.000Z/P1Y"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "thermal",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRILWTX","NTRIKGD1","NTRIKGD6","MDMAP007","NTRIAAD5","NTRIAAD2","NTRIAAD3","NTRIAAD1","NTRFSG01","NTRIXXDZ","NTRIAADZ","NTRIMADZ","NTRIYYDZ","NTRIAATX","NTRIMATX","NTRIZZXX","NTRIAAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+                {
+                    "id": "nitrite-monthly",
+                    "name": "default nitrite monthly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R900/1950-01-01T00:00:00.000Z/P1M"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "month": {"type": "numeric", "format": "mm"},
+                            "day": {"type": "numeric", "format": "dd"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "month": 1,
+                            "day": 31,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "thermal",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRILWTX","NTRIKGD1","NTRIKGD6","MDMAP007","NTRIAAD5","NTRIAAD2","NTRIAAD3","NTRIAAD1","NTRFSG01","NTRIXXDZ","NTRIAADZ","NTRIMADZ","NTRIYYDZ","NTRIAATX","NTRIMATX","NTRIZZXX","NTRIAAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+
+                {
+                    "id": "nitrate_nitrite-yearly",
+                    "name": "default nitrate and nitrite yearly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R75/1950-01-01T00:00:00.000Z/P1Y"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "thermal",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRZLWTX","NTRZKGD1","NTRAMS01","NTKGAATX","MDMAP006","NTRZAAD5","NTRZAAD2","NTRZAAD3","NTRZAAD1","NTRZAADZ","NTRZMADZ","NTRZYYDZ","NTRZAATX","NTRZNS01","NTRZMATX","NTRZNNTX","NTRZZZXX","NTRZAAZX","NTRZMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "min_value": -5.0,
+                        "max_value": 40.0,
+                        "shape": "circle"
+                    }
+                },
+
+                {
+                    "id": "nitrate_nitrite-monthly",
+                    "name": "default nitrate and nitrite monthly",
+                    "config": {
+                        "dimensions": {
+                            "time": {
+                                "default": "2021-01-01T00:00:00.000Z",
+                                "units": "ISO8601",
+                                "accepted": "R900/1950-01-01T00:00:00.000Z/P1M"
+                            },
+                            "elevation": {
+                                "default": "0/5",
+                                "units": "m",
+                                "accepted": [
+                                    "0/5",
+                                    "5/10",
+                                    "10/20",
+                                    "20/30",
+                                    "30/50",
+                                    "50/75",
+                                    "75/100",
+                                    "100/125",
+                                    "125/150",
+                                    "150/200",
+                                    "200/250",
+                                    "250/300",
+                                    "300/400",
+                                    "400/500",
+                                    "500/600",
+                                    "600/700",
+                                    "700/800",
+                                    "800/900",
+                                    "900/1000",
+                                    "1000/1100",
+                                    "1100/1200",
+                                    "1200/1300",
+                                    "1300/1400",
+                                    "1400/1500",
+                                    "1500/1750",
+                                    "1750/2000",
+                                    "2000/2500",
+                                    "2500/3000",
+                                    "3000/3500",
+                                    "3500/4000",
+                                    "4000/4500",
+                                    "4500/5000",
+                                    "5000/12000"
+                                ]
+                            }
+                        },
+                        "available_viewparams": {
+                            "year": {"type": "numeric", "format": "yyyy"},
+                            "month": {"type": "numeric", "format": "mm"},
+                            "day": {"type": "numeric", "format": "dd"},
+                            "bbox": {"type": "numeric_array", "format": ["minlon", "minlat", "maxlon", "maxlat"]},
+                            "depth": {
+                                "type": "numeric_array",
+                                "format": ["min", "max"],
+                                "allowed": {
+                                    "0/5": [0, 5],
+                                    "5/10": [5, 10],
+                                    "10/20": [10, 20],
+                                    "20/30": [20, 30],
+                                    "30/50": [30,50],
+                                    "50/75": [50, 75],
+                                    "75/100": [75, 100],
+                                    "100/125": [100, 125],
+                                    "125/150": [125, 150],
+                                    "150/200": [150, 200],
+                                    "200/250": [200, 250],
+                                    "250/300": [250, 300],
+                                    "300/400": [300, 400],
+                                    "400/500": [400, 500],
+                                    "500/600": [500, 600],
+                                    "600/700": [600, 700],
+                                    "700/800": [700, 800],
+                                    "800/900": [800, 900],
+                                    "900/1000": [900, 1000],
+                                    "1000/1100": [1000, 1100],
+                                    "1100/1200": [1100, 1200],
+                                    "1200/1300": [1200, 1300],
+                                    "1300/1400": [1300, 1400],
+                                    "1400/1500": [1400, 1500],
+                                    "1500/1750": [1500, 1750],
+                                    "1750/2000": [1750, 2000],
+                                    "2000/2500": [2000, 2500],
+                                    "2500/3000": [2500, 3000],
+                                    "3000/3500": [3000, 3500],
+                                    "3500/4000": [3500, 4000],
+                                    "4000/4500": [4000, 4500],
+                                    "4500/5000": [4500, 5000],
+                                    "5000/12000": [5000, 12000]
+                                }
+                            }
+                        },
+                        "assigned_viewparams": {
+                            "year": 2021,
+                            "month": 1,
+                            "day": 31,
+                            "depth": [0, 5],
+                            "bbox": [-180, -90, 180, 90]
+                        },
+                        "default_style": "thermal",
+                        "instance_url": "https://beacon-cdi.maris.nl/",
+                        "token": "",
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRZLWTX","NTRZKGD1","NTRAMS01","NTKGAATX","MDMAP006","NTRZAAD5","NTRZAAD2","NTRZAAD3","NTRZAAD1","NTRZAADZ","NTRZMADZ","NTRZYYDZ","NTRZAATX","NTRZNS01","NTRZMATX","NTRZNNTX","NTRZZZXX","NTRZAAZX","NTRZMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": -5.0,
                         "max_value": 40.0,
                         "shape": "circle"
                     }
                 }
+
             ]
         }
     ]
