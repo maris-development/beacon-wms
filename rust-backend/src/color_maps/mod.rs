@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn load_colormaps() {
-        let color_map = ColorMap::get_named("rainbow", 0.0, 40.0, Some(false));
+        let color_map = ColorMap::get_named("dense", 0.0, 40.0, Some(true));
 
         assert!(color_map.is_some());
 

@@ -48,5 +48,6 @@ pub struct LayerInnerConfig {
     pub min_value: Option<f64>,
     pub max_value: Option<f64>,
     pub shape: Option<String>,
+    pub log_style: Option<bool>,
 }
 

@@ -303,8 +303,9 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
         // what do these min/max values do? why not in viewparams? why in layer config?
         let min_value = layer_config.config.min_value.unwrap_or(-10.0);
         let max_value = layer_config.config.max_value.unwrap_or(100.0);
+        let log_style = layer_config.config.log_style;
 
-        let color_map = match crate::color_maps::ColorMap::get_named(style, min_value, max_value, Some(false))
+        let color_map = match crate::color_maps::ColorMap::get_named(style, min_value, max_value, log_style)
         {
             Some(map) => map,
             None => {
