@@ -559,7 +559,7 @@
                         "default_style": "oxy",
                         "instance_url": "https://beacon-cdi.maris.nl/",
                         "token": "",
-                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"PHXXPR01","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["PHMASSXX","PHTLSX25","PHXXSP02","PHXXZZXX","PHXXPR01"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": -5.0,
                         "max_value": 40.0,
                         "shape": "circle"
@@ -671,14 +671,14 @@
                         "default_style": "oxy",
                         "instance_url": "https://beacon-cdi.maris.nl/",
                         "token": "",
-                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"PHXXPR01","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
+                        "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["PHMASSXX","PHTLSX25","PHXXSP02","PHXXZZXX","PHXXPR01"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": -5.0,
                         "max_value": 40.0,
                         "shape": "circle"
                     }
                 },
 
-
+            
                 {
                     "id": "silicate-yearly",
                     "name": "default silicate yearly",
