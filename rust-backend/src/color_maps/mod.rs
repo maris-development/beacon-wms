@@ -112,9 +112,9 @@ impl ColorMap {
         name: &str,
         min_value: f64,
         max_value: f64,
-        log: Option<bool>,
+        log_style: Option<bool>,
     ) -> Option<ColorMap> {
-        let log = log.unwrap_or(false);
+        let log = log_style.unwrap_or(false);
 
         let cache_key = format!("{}-{}-{}-{}", name, min_value, max_value, log);
 
@@ -160,10 +160,10 @@ impl ColorMap {
         color_map_data: Arc<ColorMapData>,
         min_value: f64,
         max_value: f64,
-        log: Option<bool>,
+        log_style: Option<bool>,
     ) -> ColorMap {
         let steps = color_map_data.scale.len();
-        let log = log.unwrap_or(false);
+        let log = log_style.unwrap_or(false);
 
         let mut colors: Vec<(f64, Rgba<u8>)> = Vec::with_capacity(steps);
         let mut lab_colors: Vec<(f64, (f64, f64, f64))> = Vec::with_capacity(steps);
@@ -206,16 +206,17 @@ impl ColorMap {
         if self.colors.len() == 1 {
             return self.colors[0].1; // only one color in the scale
         }
-        
-        // Normalize value to [0,1]
-        let normalized_value =
-            ((value - self.min_value) / (self.max_value - self.min_value)).clamp(0.0, 1.0);
 
-        if self.log {
-            self.get_color_logspace(normalized_value)
+        // Normalize value to [0,1], using log10 scale when log mode is active
+        let normalized_value = if self.log && self.min_value > 0.0 && value > 0.0 {
+            let log_min = self.min_value.log10();
+            let log_max = self.max_value.log10();
+            ((value.log10() - log_min) / (log_max - log_min)).clamp(0.0, 1.0)
         } else {
-            self.get_color(normalized_value)
-        }
+            ((value - self.min_value) / (self.max_value - self.min_value)).clamp(0.0, 1.0)
+        };
+
+        self.get_color(normalized_value)
     }
 
     fn get_color(&self, normalized_value: f64) -> Rgba<u8> {

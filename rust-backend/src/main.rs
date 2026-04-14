@@ -100,7 +100,7 @@ async fn index() -> impl IntoResponse {
 
 async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoResponse {
 
-    log::info!("Get map request: {:?}", get_map_params);
+    // log::info!("Get map request: {:?}", get_map_params);
 
     let mut profiling = RequestProfiling::new();
 
