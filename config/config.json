@@ -5,13 +5,6 @@
     },
     "workspaces": [
         {
-            "id": "ihm",
-            "name": "Informatiehuis Marien Workspace",
-            "description": "This is the Informatiehuis Marien workspace.",
-            "layers": [
-            ]
-        },
-        {
             "id": "default",
             "name": "Default Workspace",
             "description": "This is the default workspace",
@@ -120,7 +113,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"subsurface_temperature","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": -3.0,
                         "max_value": 35.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": false
                     }
                 },
@@ -233,7 +226,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"subsurface_temperature","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": -3.0,
                         "max_value": 35.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": false
                     }
                 },
@@ -343,7 +336,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"oxygen","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0,
                         "max_value": 500.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": false
                     }
                 },
@@ -456,7 +449,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"column":"oxygen","alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.0,
                         "max_value": 500.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": false
                     }
                 },
@@ -566,7 +559,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["PHMASSXX","PHTLSX25","PHXXSP02","PHXXZZXX","PHXXPR01"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 7.5,
                         "max_value": 8.5,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": false
                     }
                 },
@@ -679,7 +672,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["PHMASSXX","PHTLSX25","PHXXSP02","PHXXZZXX","PHXXPR01"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 7.5,
                         "max_value": 8.5,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": false
                     }
                 },
@@ -789,7 +782,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["SLCAKGD1","SLCAMS01","SLKGAATX","MDMAP012","SLCAAAD5","SLCAAAD2","SLCAAAD3","SLCAAAD1","SLCAAADZ","SLCAAATX","SLCANS01","SLCAMATX","SLCAZZXX","SLCAAAZX","SLCAMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.1,
                         "max_value": 200.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": true
                     }
                 },
@@ -902,7 +895,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["SLCAKGD1","SLCAMS01","SLKGAATX","MDMAP012","SLCAAAD5","SLCAAAD2","SLCAAAD3","SLCAAAD1","SLCAAADZ","SLCAAATX","SLCANS01","SLCAMATX","SLCAZZXX","SLCAAAZX","SLCAMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.1,
                         "max_value": 200.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": true
                     }
                 },
@@ -1012,7 +1005,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["PHOSLWTX","PHOSMS01","PHKGAATX","MDMAP906","PHOSAAD5","PHOSAAD2","PHOSMAD2","PHOSAA01","PHOSAAD3","PHOSAAD1","PHOSMAD1","PHOSAADZ","PHOSMADZ","PHOSYYDZ","PHOSAATX","PHOSMATX","PHOSZZXX","PHOSAAZX","PHOSMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.001,
                         "max_value": 15.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": true
                     }
                 },
@@ -1125,7 +1118,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["PHOSLWTX","PHOSMS01","PHKGAATX","MDMAP906","PHOSAAD5","PHOSAAD2","PHOSMAD2","PHOSAA01","PHOSAAD3","PHOSAAD1","PHOSMAD1","PHOSAADZ","PHOSMADZ","PHOSYYDZ","PHOSAATX","PHOSMATX","PHOSZZXX","PHOSAAZX","PHOSMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.001,
                         "max_value": 15.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": true
                     }
                 },
@@ -1235,7 +1228,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRAMS02","MDMAP005","ODSDM2UM","NTRAAA04","NTRAAAD1","NTRTFSG1","NTRAXXDZ","ODSDM014","NO3FLTIC","NTRAMADZ","NTRAYYDZ","CHEMM012","NTRZMC01","NTRZMS01","NTRAZZXX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.1,
                         "max_value": 125.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": true
                     }
                 },
@@ -1348,7 +1341,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRAMS02","MDMAP005","ODSDM2UM","NTRAAA04","NTRAAAD1","NTRTFSG1","NTRAXXDZ","ODSDM014","NO3FLTIC","NTRAMADZ","NTRAYYDZ","CHEMM012","NTRZMC01","NTRZMS01","NTRAZZXX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.1,
                         "max_value": 125.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": true
                     }
                 },
@@ -1458,7 +1451,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRILWTX","NTRIKGD1","NTRIKGD6","MDMAP007","NTRIAAD5","NTRIAAD2","NTRIAAD3","NTRIAAD1","NTRFSG01","NTRIXXDZ","NTRIAADZ","NTRIMADZ","NTRIYYDZ","NTRIAATX","NTRIMATX","NTRIZZXX","NTRIAAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.1,
                         "max_value": 125.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": true
                     }
                 },
@@ -1571,7 +1564,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRILWTX","NTRIKGD1","NTRIKGD6","MDMAP007","NTRIAAD5","NTRIAAD2","NTRIAAD3","NTRIAAD1","NTRFSG01","NTRIXXDZ","NTRIAADZ","NTRIMADZ","NTRIYYDZ","NTRIAATX","NTRIMATX","NTRIZZXX","NTRIAAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.1,
                         "max_value": 125.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": true
                     }
                 },
@@ -1681,7 +1674,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRZLWTX","NTRZKGD1","NTRAMS01","NTKGAATX","MDMAP006","NTRZAAD5","NTRZAAD2","NTRZAAD3","NTRZAAD1","NTRZAADZ","NTRZMADZ","NTRZYYDZ","NTRZAATX","NTRZNS01","NTRZMATX","NTRZNNTX","NTRZZZXX","NTRZAAZX","NTRZMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-01-01T00:00:00","lt_eq":"%year%-12-31T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.1,
                         "max_value": 125.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": true
                     }
                 },
@@ -1794,7 +1787,7 @@
                         "query": {"from":"default","select":[{"column":"TIME","alias":"time"},{"column":"LONGITUDE","alias":"longitude"},{"column":"LATITUDE","alias":"latitude"},{"column":"DEPTH","alias":"depth"},{"function":"coalesce","args":["NTRZLWTX","NTRZKGD1","NTRAMS01","NTKGAATX","MDMAP006","NTRZAAD5","NTRZAAD2","NTRZAAD3","NTRZAAD1","NTRZAADZ","NTRZMADZ","NTRZYYDZ","NTRZAATX","NTRZNS01","NTRZMATX","NTRZNNTX","NTRZZZXX","NTRZAAZX","NTRZMAZX"],"alias":"value"}],"filters":[{"column":"time","gt_eq":"%year%-%month%-01T00:00:00","lt_eq":"%year%-%month%-%day%T23:59:59"},{"column":"longitude","gt_eq":"%bbox[0]%","lt_eq":"%bbox[2]%"},{"column":"latitude","gt_eq":"%bbox[1]%","lt_eq":"%bbox[3]%"},{"is_not_null":{"column":"value"}},{"column":"depth","gt_eq":"%depth[0]%","lt_eq":"%depth[1]%"}],"output":{"format":"parquet"}},
                         "min_value": 0.1,
                         "max_value": 125.0,
-                        "shape": "circle",
+                        "shape": "circle_outlined",
                         "log_style": true
                     }
                 }

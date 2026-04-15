@@ -226,9 +226,13 @@ pub fn get_map(
 
             let draw_result: Result<(), MapError> = match icon_shape {
                 "circle" => draw_circle(image, offset, color, Some(point_radius)),
+                "circle_outlined" => draw_circle_outlined(image, offset, color, point_radius, Some((Rgba([0, 0, 0, 254]), 1))),
                 "square" => draw_square(image, offset, color, Some(point_radius)),
+                "square_outlined" => draw_square_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
                 "plus" => draw_plus(image, offset, color, Some(point_radius)),
+                "plus_outlined" => draw_plus_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
                 "triangle" => draw_triangle(image, offset, color, Some(point_radius)),
+                "triangle_outlined" => draw_triangle_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
                 _ => draw_circle(image, offset, color, Some(point_radius)),
             };
 
@@ -246,7 +250,29 @@ pub fn get_map(
     return Ok(drawn_count);
 }
 
+fn draw_pixel(image: &mut RgbaImage, x: i32, y: i32, color: Rgba<u8>) {
+    if !misc::inside_image(image, (x, y)) {
+        return;
+    }
 
+    if color[3] == 255 {
+        // FILL: always overwrite
+        unsafe {
+            image.unsafe_put_pixel(x as u32, y as u32, color);
+        }
+        return;
+    }
+
+    // OUTLINE (any alpha < 255)
+    let dst = image.get_pixel(x as u32, y as u32);
+
+    // only draw on empty/background pixels
+    if dst[3] == 0 {
+        unsafe {
+            image.unsafe_put_pixel(x as u32, y as u32, color);
+        }
+    }
+}
 
 fn draw_circle(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, radius: Option<i32>) -> Result<(), MapError> {
     let radius = radius.unwrap_or(2);
@@ -258,66 +284,219 @@ fn draw_circle(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, radius
                 let px = point.0 + x;
                 let py = point.1 + y;
 
-                if misc::inside_image(image, (px, py)) {
-                    // SAFETY: bounds verified by inside_image above
-                    unsafe { image.unsafe_put_pixel(px as u32, py as u32, color); }
+                draw_pixel(image, px, py, color);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn draw_circle_outlined(
+    image: &mut RgbaImage,
+    point: (i32, i32),
+    fill: Rgba<u8>,
+    radius: i32,
+    outline: Option<(Rgba<u8>, i32)>, // (colour, thickness)
+) -> Result<(), MapError> {
+
+    let r_sq = radius * radius;
+
+    // --- 1. outline pass (draw first, so fill sits on top) ---
+    if let Some((outline_color, thickness)) = outline {
+        let outer_r = radius + thickness;
+        let outer_r_sq = outer_r * outer_r;
+
+        for x in -outer_r..=outer_r {
+            for y in -outer_r..=outer_r {
+                let d = x * x + y * y;
+
+                if d <= outer_r_sq && d > r_sq {
+                    let px = point.0 + x;
+                    let py = point.1 + y;
+
+                    draw_pixel(image, px, py, outline_color);
                 }
             }
         }
     }
 
+    // --- 2. fill pass ---
+    for x in -radius..=radius {
+        for y in -radius..=radius {
+            if x * x + y * y <= r_sq {
+                let px = point.0 + x;
+                let py = point.1 + y;
+
+                draw_pixel(image, px, py, fill);
+            }
+        }
+    }
+
     Ok(())
 }
 
-fn draw_square(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_size: Option<i32>) -> Result<(), MapError> {
-    let half_size = half_size.unwrap_or(2);
+fn draw_square(
+    image: &mut RgbaImage,
+    point: (i32, i32),
+    color: Rgba<u8>,
+    half_size: Option<i32>,
+) -> Result<(), MapError> {
 
-    for x in -half_size..=half_size {
-        for y in -half_size..=half_size {
+    let half = half_size.unwrap_or(2);
+
+    for x in -half..=half {
+        for y in -half..=half {
             let px = point.0 + x;
             let py = point.1 + y;
 
-            if misc::inside_image(image, (px, py)) {
-                // SAFETY: bounds verified by inside_image above
-                unsafe { image.unsafe_put_pixel(px as u32, py as u32, color); }
-            }
+            draw_pixel(image, px, py, color);
         }
     }
 
     Ok(())
 }
 
- fn draw_plus(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_size: Option<i32>) -> Result<(), MapError> {
+fn draw_square_outlined(
+    image: &mut RgbaImage,
+    point: (i32, i32),
+    color: Rgba<u8>,
+    half_size: Option<i32>,
+    outline: Option<(Rgba<u8>, i32)>,
+) -> Result<(), MapError> {
 
-    let half_size = half_size.unwrap_or(2);
-    let mut thickness = (half_size / 2).max(1); // Ensure a minimum thickness of 1 pixel
-    while thickness % 2 == 0 {
-        // Make sure thickness is odd for symmetry
-        thickness += 1;
-    }
-    // We can draw both the vertical and horizontal lines in one loop
-    // to be more efficient than iterating the whole bounding box (O(N) vs O(N^2)).
+    let half = half_size.unwrap_or(2);
 
-    for i in -half_size..=half_size {
-        // Horizontal line points: (center_x + i, center_y)
-        for t in -(thickness / 2)..=(thickness / 2) {
-            let h_x = point.0 + i;
-            let h_y = point.1 + t;
-            if misc::inside_image(image, (h_x, h_y)) {
-                // SAFETY: bounds verified by inside_image above
-                unsafe { image.unsafe_put_pixel(h_x as u32, h_y as u32, color); }
-            }
+    let (outline_color, thickness) = outline.unzip();
+
+    let t = thickness.unwrap_or(0);
+
+    for x in -half..=half {
+        for y in -half..=half {
+
+            let is_border =
+                t > 0 &&
+                (x.abs() > half - t || y.abs() > half - t);
+
+            let px = point.0 + x;
+            let py = point.1 + y;
+
+            let color_to_draw = if is_border {
+                outline_color.unwrap()
+            } else {
+                color
+            };
+
+            draw_pixel(image, px, py, color_to_draw);
         }
+    }
+
+    Ok(())
+}
+
+//  fn draw_plus(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_size: Option<i32>) -> Result<(), MapError> {
+
+//     let half_size = half_size.unwrap_or(2);
+//     let mut thickness = (half_size / 2).max(1); // Ensure a minimum thickness of 1 pixel
+//     while thickness % 2 == 0 {
+//         // Make sure thickness is odd for symmetry
+//         thickness += 1;
+//     }
+//     // We can draw both the vertical and horizontal lines in one loop
+//     // to be more efficient than iterating the whole bounding box (O(N) vs O(N^2)).
+
+//     for i in -half_size..=half_size {
+//         // Horizontal line points: (center_x + i, center_y)
+//         for t in -(thickness / 2)..=(thickness / 2) {
+//             let h_x = point.0 + i;
+//             let h_y = point.1 + t;
+//             if misc::inside_image(image, (h_x, h_y)) {
+//                 // SAFETY: bounds verified by inside_image above
+//                 unsafe { image.unsafe_put_pixel(h_x as u32, h_y as u32, color); }
+//             }
+//         }
 
     
-        // Vertical line points: (center_x, center_y + i)
+//         // Vertical line points: (center_x, center_y + i)
+//         for t in -(thickness / 2)..=(thickness / 2) {
+//             let v_x = point.0 + t;
+//             let v_y = point.1 + i;
+//             if misc::inside_image(image, (v_x, v_y)) {
+//                 // SAFETY: bounds verified by inside_image above
+//                 unsafe { image.unsafe_put_pixel(v_x as u32, v_y as u32, color); }
+//             }
+//         }
+//     }
+
+//     Ok(())
+// }
+
+fn draw_plus(
+    image: &mut RgbaImage,
+    point: (i32, i32),
+    color: Rgba<u8>,
+    half_size: Option<i32>,
+) -> Result<(), MapError> {
+
+    let half = half_size.unwrap_or(2);
+    let thickness = (half / 2).max(1);
+
+    for i in -half..=half {
+
+        // horizontal bar
         for t in -(thickness / 2)..=(thickness / 2) {
-            let v_x = point.0 + t;
-            let v_y = point.1 + i;
-            if misc::inside_image(image, (v_x, v_y)) {
-                // SAFETY: bounds verified by inside_image above
-                unsafe { image.unsafe_put_pixel(v_x as u32, v_y as u32, color); }
-            }
+            let px = point.0 + i;
+            let py = point.1 + t;
+
+            draw_pixel(image, px, py, color);
+        }
+
+        // vertical bar
+        for t in -(thickness / 2)..=(thickness / 2) {
+            let px = point.0 + t;
+            let py = point.1 + i;
+
+            draw_pixel(image, px, py, color);
+        }
+    }
+
+    Ok(())
+}
+
+fn draw_plus_outlined(
+    image: &mut RgbaImage,
+    point: (i32, i32),
+    color: Rgba<u8>,
+    half_size: Option<i32>,
+    outline: Option<(Rgba<u8>, i32)>,
+) -> Result<(), MapError> {
+
+    let half = half_size.unwrap_or(2);
+    let t = outline.as_ref().map(|(_, t)| *t).unwrap_or(0);
+
+    let outline_color = outline.map(|(c, _)| c);
+
+    for i in -half..=half {
+
+        for thickness in -(half / 2 + t)..=(half / 2 + t) {
+
+            let is_outline = t > 0 &&
+                (i.abs() > half - t || thickness.abs() > (half / 2));
+
+            let px_h = point.0 + i;
+            let py_h = point.1 + thickness;
+
+            let px_v = point.0 + thickness;
+            let py_v = point.1 + i;
+
+            let col = if is_outline {
+                outline_color.unwrap()
+            } else {
+                color
+            };
+
+            draw_pixel(image, px_h, py_h, col);
+            draw_pixel(image, px_v, py_v, col);
         }
     }
 
@@ -325,30 +504,92 @@ fn draw_square(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_s
 }
 
 
-fn draw_triangle(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_size: Option<i32>) -> Result<(), MapError> {
-    let half_size = half_size.unwrap_or(2);
+// fn draw_triangle(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_size: Option<i32>) -> Result<(), MapError> {
+//     let half_size = half_size.unwrap_or(2);
 
-    for y_offset in -half_size..=half_size {
-        // We calculate the maximum allowed x-width for the current row.
-        // As y goes down (increases), the triangle gets wider.
-        // The division by 2 ensures a standard triangle slope (approx 60 degrees) 
-        // rather than a very wide 90-degree slope.
-        let max_x_width = (y_offset + half_size) / 2;
+//     for y_offset in -half_size..=half_size {
+//         // We calculate the maximum allowed x-width for the current row.
+//         // As y goes down (increases), the triangle gets wider.
+//         // The division by 2 ensures a standard triangle slope (approx 60 degrees) 
+//         // rather than a very wide 90-degree slope.
+//         let max_x_width = (y_offset + half_size) / 2;
+
+//         for x_offset in -max_x_width..=max_x_width {
+//             let px = point.0 + x_offset;
+//             let py = point.1 + y_offset;
+
+//             if misc::inside_image(image, (px, py)) {
+//                 // SAFETY: bounds verified by inside_image above
+//                 unsafe { image.unsafe_put_pixel(px as u32, py as u32, color); }
+//             }
+//         }
+//     }
+
+//     Ok(())
+// }
+
+fn draw_triangle(
+    image: &mut RgbaImage,
+    point: (i32, i32),
+    color: Rgba<u8>,
+    half_size: Option<i32>,
+) -> Result<(), MapError> {
+
+    let half = half_size.unwrap_or(2);
+
+    for y_offset in -half..=half {
+
+        let max_x_width = (y_offset + half) / 2;
 
         for x_offset in -max_x_width..=max_x_width {
+
             let px = point.0 + x_offset;
             let py = point.1 + y_offset;
 
-            if misc::inside_image(image, (px, py)) {
-                // SAFETY: bounds verified by inside_image above
-                unsafe { image.unsafe_put_pixel(px as u32, py as u32, color); }
-            }
+            draw_pixel(image, px, py, color);
         }
     }
 
     Ok(())
 }
 
+fn draw_triangle_outlined(
+    image: &mut RgbaImage,
+    point: (i32, i32),
+    color: Rgba<u8>,
+    half_size: Option<i32>,
+    outline: Option<(Rgba<u8>, i32)>,
+) -> Result<(), MapError> {
+
+    let half = half_size.unwrap_or(2);
+    let t = outline.as_ref().map(|(_, t)| *t).unwrap_or(0);
+    let outline_color = outline.map(|(c, _)| c);
+
+    for y in -half..=half {
+
+        let max_x = (y + half) / 2;
+
+        for x in -max_x..=max_x {
+
+            let px = point.0 + x;
+            let py = point.1 + y;
+
+            let is_outline =
+                t > 0 &&
+                (y >= half - t || x.abs() >= max_x - t);
+
+            let col = if is_outline {
+                outline_color.unwrap()
+            } else {
+                color
+            };
+
+            draw_pixel(image, px, py, col);
+        }
+    }
+
+    Ok(())
+}
 
 
 
