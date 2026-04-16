@@ -556,35 +556,60 @@ fn draw_triangle(
 fn draw_triangle_outlined(
     image: &mut RgbaImage,
     point: (i32, i32),
-    color: Rgba<u8>,
+    fill: Rgba<u8>,
     half_size: Option<i32>,
     outline: Option<(Rgba<u8>, i32)>,
 ) -> Result<(), MapError> {
 
     let half = half_size.unwrap_or(2);
-    let t = outline.as_ref().map(|(_, t)| *t).unwrap_or(0);
-    let outline_color = outline.map(|(c, _)| c);
 
+    let (outline_color, t) = if let Some(o) = outline {
+        o
+    } else {
+        (Rgba([0, 0, 0, 0]), 0) // dummy
+    };
+
+    let outer = half + t;
+
+    // --- OUTLINE PASS ---
+    if t > 0 {
+        for y in -outer..=outer {
+
+            let outer_max_x = (y + outer) / 2;
+            let inner_max_x = (y.abs() <= half).then(|| (y + half) / 2);
+
+            for x in -outer_max_x..=outer_max_x {
+
+                // OUTSIDE inner triangle but inside outer triangle
+                let in_outer =
+                    x.abs() <= outer_max_x;
+
+                let in_inner = if let Some(ix) = inner_max_x {
+                    x.abs() <= ix
+                } else {
+                    false
+                };
+
+                if in_outer && !in_inner {
+                    let px = point.0 + x;
+                    let py = point.1 + y;
+
+                    draw_pixel(image, px, py, outline_color);
+                }
+            }
+        }
+    }
+
+    // --- FILL PASS ---
     for y in -half..=half {
 
         let max_x = (y + half) / 2;
 
         for x in -max_x..=max_x {
-
             let px = point.0 + x;
             let py = point.1 + y;
 
-            let is_outline =
-                t > 0 &&
-                (y >= half - t || x.abs() >= max_x - t);
-
-            let col = if is_outline {
-                outline_color.unwrap()
-            } else {
-                color
-            };
-
-            draw_pixel(image, px, py, col);
+            draw_pixel(image, px, py, fill);
         }
     }
 
