@@ -1,6 +1,6 @@
 use crate::{boundingbox::BoundingBox};
 use crate::errors::MapError;
-use arrow::{array::{Array, PrimitiveArray, AsArray, Float32Array, Float64Array, Int64Array, StringArray}};
+use arrow::{array::{Array, PrimitiveArray, AsArray, Float32Array, Float64Array, Int64Array, Int32Array, StringArray}};
 use arrow::datatypes::{Float32Type, Float64Type, Int16Type, Int32Type, Int8Type};
 use arrow::datatypes::{Int64Type, TimeUnit};
 use chrono::{Datelike, Local};
@@ -51,6 +51,9 @@ pub fn get_string_value(col: &Arc<dyn Array>, row_idx: usize) -> String {
         float_arr.value(row_idx).to_string()
 
     } else if let Some(int_arr) = col.as_any().downcast_ref::<Int64Array>() {
+        int_arr.value(row_idx).to_string()
+
+    } else if let Some(int_arr) = col.as_any().downcast_ref::<Int32Array>() {
         int_arr.value(row_idx).to_string()
 
     } else if let Some(str_arr) = col.as_any().downcast_ref::<StringArray>() {
