@@ -10,7 +10,7 @@ use proj4rs::Proj;
 use rand::Rng;
 use rusttype::Font;
 use std::collections::HashMap;
-use std::path::{PathBuf};
+use std::path::{Path, PathBuf};
 use std::string::ToString;
 use std::sync::{Arc, RwLock};
 use std::{
@@ -590,44 +590,20 @@ pub fn configure_logger() {
 }
 
 pub fn read_config_file() -> crate::config::ConfigFile {
-
+    let config_file = get_env_var("CONFIG_FILE", Some("config.json"));
     let config_dir = get_env_var("CONFIG_DIR", Some("../config"));
-    let config_file_location = format!("{}/config.json", config_dir);
+    let config_file_location = format!("{}/{}", config_dir, config_file);
     let json_str =
         std::fs::read_to_string(config_file_location).expect("Failed to read config file");
-    let mut parsed: crate::config::ConfigFile = serde_json::from_str(&json_str).unwrap();
 
-    // redundant
-    // if parsed.workspaces.is_some() {
-    //     for mut workspace in parsed.workspaces.expect("") {
-    //         for mut layer_config in workspace.layers {
-    //             let mut layer_inner_config = layer_config.config;
-    //             if layer_inner_config.dimensions.is_some() {
-    //                 for (key, mut dimension) in layer_inner_config.dimensions.expect("").into_iter() {
-                        
-    //                     if dimension.accepted.is_some() {
-    //                         match dimension.accepted.expect("") {
-    //                             AcceptedValues::Multiple(values) => values,
-    //                             AcceptedValues::Single(period) => {
-    //                                 // return generate_iso_period_timestamps(period)
-    //                             }
-    //                         }
-    //                     }
-    //                 }
-    //             }      
-    //         }
-    //     }    
-    // }
-
-    parsed
+    serde_json::from_str(&json_str).unwrap()
 }
 
 pub fn get_env_var(var_name: &str, default: Option<&str>) -> String {
-    let default = match default {
+    env::var(var_name).unwrap_or_else(|_|  match default {
         Some(d) => d,
         None => "",
-    };
-    env::var(var_name).unwrap_or_else(|_| default.to_string())
+    }.to_string())
 }
 
 pub fn random_string(length: usize) -> String {
@@ -672,13 +648,33 @@ pub fn parse_range(input: &str) -> Result<(f64, f64), &str> {
     Ok((start, end))
 }
 
-pub fn get_layer_filepath(workspace_id: &str, layer_id: &str, hash: Option<&str>) -> Result<String, String> {
-    let layer_directory = get_env_var(
+
+pub fn get_parquet_files(dir: &str) -> Vec<String> {
+    let path = Path::new(dir);
+    
+    fs::read_dir(path)
+        .expect("Failed to read directory")
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.is_file() && path.extension()?.to_str()? == "parquet" {
+                Some(path.to_string_lossy().to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+pub fn get_layer_directory() -> String {
+    get_env_var(
         "LAYER_DIR",
         Some("../layers"),
-    );
+    )
+}
 
-    // let hash = has the viewparams
+pub fn get_layer_filepath(workspace_id: &str, layer_id: &str, hash: Option<&str>) -> Result<String, String> {
+    let layer_directory = get_layer_directory();
 
     let hash = match hash {
         Some(h) => h.to_string(),

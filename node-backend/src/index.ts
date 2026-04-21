@@ -9,7 +9,7 @@ import logger from "./service/logger";
 
 const config = new Config();
 const wmsService: BeaconWmsService = new BeaconWmsService(config);
-const adminService: AdminService = new AdminService(config);
+const adminService: AdminService = new AdminService();
 
 
 config.load(); // async Load config at startup
@@ -26,7 +26,7 @@ app.use(appMiddleware)
 app.get(routes.root.getRoute(), homepage);
 app.get(routes.defaultWms.getRoute(), defaultWms);
 app.get(routes.workspaceWms.getRoute(), workspaceWms);
-app.get(routes.updateLayers.getRoute(), updateLayers);
+app.get(routes.clearLayers.getRoute(), clearLayers);
 
 const server = app.listen(http_port, http_address, () => {
   logger.info(`Node backend listening at http://${http_address}:${http_port}`);
@@ -77,8 +77,8 @@ function workspaceWms(req: Request, res: Response){
 
 }
 
-function updateLayers(req: Request, res: Response){
-    adminService.updateLayers(req, res);
+function clearLayers(req: Request, res: Response){
+    adminService.clearLayers(req, res);
 }
 
 function appMiddleware(req: Request, res: Response, next: NextFunction) {

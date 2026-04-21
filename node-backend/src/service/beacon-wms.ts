@@ -242,6 +242,15 @@ export class BeaconWmsService {
         queryParameters: Record<string, any>
     ) {
         //example url: http://10.0.0.33:3000/workspaces/default/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&FORMAT=image%2Fpng&TRANSPARENT=true&QUERY_LAYERS=example-layer&LAYERS=example-layer&INFO_FORMAT=text%2Fhtml&FEATURE_COUNT=20&I=232&J=231&WIDTH=256&HEIGHT=256&CRS=EPSG%3A3857&STYLES=&BBOX=-1721973.373208452%2C6261721.357121639%2C-1565430.3392804111%2C6418264.39104968
+        const version = queryParameters['version'];
+        const rawX = queryParameters['x'] ?? queryParameters['i'];
+        const rawY = queryParameters['y'] ?? queryParameters['j'];
+        const height = queryParameters['height'];
+
+        // WMS 1.1.1 uses X/Y with origin at bottom-left; flip Y to top-left for internal use
+        const normalizedY = version === '1.1.1' 
+            ? String(Number(height) - Number(rawY)) 
+            : rawY;
 
         const wmsGetFeatureInfoParams: WMSGetFeatureInfoParameters = {
             service: queryParameters['service'],
@@ -254,8 +263,8 @@ export class BeaconWmsService {
             bbox: queryParameters['bbox'],
             width: queryParameters['width'],
             height: queryParameters['height'],
-            x: queryParameters['x'] ?? queryParameters['i'],
-            y: queryParameters['y'] ?? queryParameters['j'],
+            x: rawX,
+            y: normalizedY,
             styles: queryParameters['styles'],
             feature_count: queryParameters['feature_count'],
             exceptions: queryParameters['exceptions'],

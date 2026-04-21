@@ -2,7 +2,6 @@ use core::fmt;
 use image::{Rgba};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use statrs::generate;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -100,7 +99,6 @@ pub struct ColorMap {
     interpolation: Interpolation,
     colors: Vec<(f64, Rgba<u8>)>,
     lab_colors: Vec<(f64, (f64, f64, f64))>,
-    log_space: Vec<f64>,
     log: bool,
     min_value: f64,
     max_value: f64,
@@ -178,12 +176,6 @@ impl ColorMap {
             lab_colors.push((step.0, color_lab));
         }
 
-        let log_space = generate::log_spaced(
-            steps,
-            min_value.log10(), //if below 0 will return NaN
-            max_value.log10(),
-        );
-
         let interpolation: Interpolation = color_map_data.interpolation;
 
         Self {
@@ -191,7 +183,6 @@ impl ColorMap {
             interpolation,
             colors,
             lab_colors,
-            log_space,
             log,
             min_value,
             max_value,
@@ -243,32 +234,7 @@ impl ColorMap {
 
         self.interpolate(lower, upper, interpolation_fraction)
     }
-
-    fn get_color_logspace(&self, normalized_value: f64) -> Rgba<u8> {
-        // Binary search: find the first log_space entry > normalized_value
-        let idx = self.log_space.partition_point(|&step| step <= normalized_value);
-
-        if idx == 0 {
-            return self.colors[0].1;
-        }
-        if idx >= self.log_space.len() {
-            return self.colors.last().unwrap().1;
-        }
-
-        let lower = idx - 1;
-        let upper = idx;
-        let step_lower = self.log_space[lower];
-        let step_upper = self.log_space[upper];
-
-        let interpolation_fraction = if (step_upper - step_lower).abs() < f64::EPSILON {
-            0.0
-        } else {
-            (normalized_value - step_lower) / (step_upper - step_lower)
-        };
-
-        self.interpolate(lower, upper, interpolation_fraction)
-    }
-
+    
     /// Build a pre-computed lookup table of `size` entries spanning [min_value, max_value].
     /// Returns packed u32 RGBA values for direct use in the rendering loop.
     pub fn build_lut(&self, size: usize) -> Vec<u32> {

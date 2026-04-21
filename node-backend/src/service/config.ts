@@ -4,8 +4,9 @@ import { readFile, writeFile } from "fs/promises";
 import { ConfigFile, ServerConfig, WorkspaceConfig } from "../types/config";
 import logger from "./logger";
 
+const CONFIG_FILE = process.env.CONFIG_FILE || "config.json"; // Config file name, can be set via environment variable
 const CONFIG_DIR = process.env.CONFIG_DIR || "../config"; // Docker config dir
-const CONFIG_FILE_LOCATION = `${CONFIG_DIR}/config.json`; // Config file location
+const CONFIG_FILE_LOCATION = `${CONFIG_DIR}/${CONFIG_FILE}`; // Config file location
 
 export class Config {
     private config: ConfigFile | null = null;
@@ -40,10 +41,6 @@ export class Config {
         if (!this.config) {
             await this.load();
         }
-    }
-
-    public getSecret(): string | undefined {
-        return this.config?.secret;
     }
 
     public async getServerConfig(): Promise<ServerConfig | undefined> {

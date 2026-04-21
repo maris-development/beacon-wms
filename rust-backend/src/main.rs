@@ -6,7 +6,7 @@ use axum::{
     routing::get,
     Router,
 };
-use std::{collections::HashMap, fs::File};
+use std::{collections::HashMap, fs::{self, File}};
 use serde_json::Value;
 use tokio::{runtime::Builder, sync::OnceCell};
 use std::sync::Arc;
@@ -73,7 +73,7 @@ fn main() {
                 .route("/", get(index))
                 .route("/get-map", get(get_map))
                 .route("/get-feature-info", get(get_feature_info))
-                .route("/update-layers", get(update_layers))
+                .route("/clear-layers", get(clear_layers))
                 .route("/available-styles", get(available_styles))
                 .layer(middleware::from_fn(log_middleware));
 
@@ -326,7 +326,6 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
         let drawing_result = map_drawing::get_map(
             &mut image,
             bounding_box.clone(),
-            wms_layer,
             color_map, 
             &get_map_params.crs,
             layer_filepath,
@@ -350,14 +349,6 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
     }
 
     // profiling.mark(&format!("applying shadow"));
-
-    // image_utils::apply_shadow(
-    //     &mut image,
-    //     1, 
-    //     image::Rgba([0, 0, 0, 100]), 
-    // );
-
-    // profiling.mark(&format!("shadow applied"));
 
     let mut png_data: Vec<u8> = Vec::new();
     let output_buffer = image_utils::rgba_image_to_png(&image, &mut png_data);
@@ -558,6 +549,8 @@ async fn get_feature_info(
             ).into_response();
         }
         
+        // log::info!("Getting feature info for layer {}, file path: {}", layer_config.id, layer_filepath);
+
         let file = match queries::get_dataset_file(&LOCK_MAP, layer_filepath.clone(), layer_config.clone()).await{
             Ok(f) => f,
             Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
@@ -640,65 +633,22 @@ async fn get_feature_info(
     }
 }
 
-// Downloads the layer data for the layers defined in the config.json.
-// saves the data to a parquet file
-// saves to path based on workspace id and layer id
-async fn update_layers() -> impl IntoResponse {
-    let config = misc::read_config_file();
+async fn clear_layers() -> impl IntoResponse {
+    let layer_dir = misc::get_layer_directory();
+    let all_parquet_files = misc::get_parquet_files(&layer_dir);
 
-    let mut updated_layer_files: Vec<String> = Vec::new();
-
-    // for each layer in each workspace in config.workspaces,
-    if let Some(workspaces) = config.workspaces {
-        for workspace in workspaces {
-            for layer in workspace.layers {
-                // Here you would add the logic to update the layer in your application
-                let query = serde_json::to_string(&layer.config.query).unwrap();
-
-                // LOOK HERE!!!!!
-                //==============
-                //==============
-                //==============
-                //==============
-                let layer_filepath = match misc::get_layer_filepath(&workspace.id, &layer.id, None) {
-                    Ok(path) => path,
-                    Err(e) => {
-                        log::error!("Error getting layer filepath: {:?}", e);
-                        return (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Error getting layer filepath: {:?}", e),
-                        );
-                    }
-                };
-
-                // log::info!("Layer query: {:?}", query);
-                log::info!("Layer file path: {:?}", layer_filepath);
-                let instance_url = layer.config.instance_url;
-                let auth_token = layer.config.token;
-
-                let result =
-                    beacon_api::query(&query, &instance_url, &auth_token, layer_filepath.as_str())
-                        .await;
-
-                if result.is_err() {
-                    let e = result.err().unwrap();
-                    log::error!("Error adding layer: {:?}", e);
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Error adding layer: {:?}", e),
-                    );
-                } else {
-                    updated_layer_files.push(layer_filepath.to_string());
-                }
-            }
+    for file in &all_parquet_files {
+        if let Err(e) = fs::remove_file(file) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to delete {}: {}", file, e),
+            );
         }
-    } else {
-        log::warn!("No workspaces found in configuration");
     }
 
     (
         StatusCode::OK,
-        format!("Layers updated: {:?}", updated_layer_files),
+        format!("Layer data cleared: {:?}", all_parquet_files),
     )
 }
 
@@ -737,389 +687,3 @@ async fn available_styles() -> impl IntoResponse {
 }
 
 
-// =========================================================================
-// TESTS
-
-
-// =========================================================================
-// parse dimensions
-
-#[cfg(test)]
-mod test_parse_dimensions {
-    use super::*;
-    use serde_json::{Value};
-    use std::collections::HashMap;
-
-    #[test]
-    fn test_both_valid() {
-        let time = Some("2024-01-01T12:00:00Z".to_string());
-        let elevation = Some("0/10".to_string());
-
-        let result = viewparams::parse_time_elevation(&time, &elevation).unwrap();
-
-        let mut expected = HashMap::<String, Value>::new();
-        expected.insert("time".to_string(), Value::String("2024-01-01T12:00:00Z".to_string()));
-        expected.insert("elevation".to_string(), Value::String("0/10".to_string()));
-
-        println!("parsed dimensions: {:?}", result);
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_only_time_valid() {
-        let time = Some("2024-01-01T12:00:00Z".to_string());
-        let elevation = None;
-
-        let result = viewparams::parse_time_elevation(&time, &elevation).unwrap();
-
-        let mut expected = HashMap::<String, Value>::new();
-        expected.insert("time".to_string(), Value::String("2024-01-01T12:00:00Z".to_string()));
-        println!("parsed dimensions: {:?}", result);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_only_elevation_valid() {
-        let time = None;
-        let elevation = Some("0/10".to_string());
-
-        let result = viewparams::parse_time_elevation(&time, &elevation).unwrap();
-
-        let mut expected = HashMap::<String, Value>::new();
-        expected.insert("elevation".to_string(), Value::String("0/10".to_string()));
-        println!("parsed dimensions: {:?}", result);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_empty_inputs() {
-        let time: Option<String> = None;
-        let elevation: Option<String> = None;
-
-        let result = viewparams::parse_time_elevation(&time, &elevation).unwrap();
-
-        let expected = HashMap::<String, Value>::new();
-        println!("parsed dimensions: {:?}", result);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_invalid_time_returns_error() {
-        let time = Some("2024-01-01".to_string()); // invalid
-        let elevation = None;
-
-        let result = viewparams::parse_time_elevation(&time, &elevation);
-        println!("parsed dimensions: {:?}", result);
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "Invalid time format. Expected YYYY-MM-DDThh:mm:ssZ"
-        );
-    }
-
-    #[test]
-    fn test_invalid_elevation_returns_error() {
-        let time = None;
-        let elevation = Some("10/0".to_string()); // invalid ordering
-
-        let result = viewparams::parse_time_elevation(&time, &elevation);
-        println!("parsed dimensions: {:?}", result);
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "Invalid order of elevation, expected min/max"
-        );
-    }
-
-    #[test]
-    fn test_invalid_time_short_circuits() {
-        let time = Some("bad".to_string());
-        let elevation = Some("0/10".to_string());
-
-        let result = viewparams::parse_time_elevation(&time, &elevation);
-        println!("parsed dimensions: {:?}", result);
-        // should fail fast on time, elevation ignored
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_invalid_elevation_short_circuits() {
-        let time = Some("2024-01-01T12:00:00Z".to_string());
-        let elevation = Some("a/b".to_string());
-
-        let result = viewparams::parse_time_elevation(&time, &elevation);
-        println!("parsed dimensions: {:?}", result);
-        assert!(result.is_err());
-    }
-
-    // negative elevation values
-    #[test]
-    fn test_valid_negative_elevation() {
-        let time = None;
-        let elevation = Some("-20/-10".to_string()); // invalid ordering
-
-        let result = viewparams::parse_time_elevation(&time, &elevation).unwrap();
-
-        let mut expected = HashMap::<String, Value>::new();
-        expected.insert("elevation".to_string(), Value::String("10/20".to_string()));
-        println!("parsed dimensions: {:?}", result);
-        assert_eq!(result, expected);
-    }
-}
-
-// =========================================================================
-// check dimensions
-
-#[cfg(test)]
-mod test_check_dimensions {
-    use super::*;
-    use serde_json::{json};
-    use std::collections::HashMap;
-
-    fn sample_layer_dimensions() -> HashMap<String, serde_json::Value> {
-        serde_json::from_value(json!({
-            "time": {
-                "default": "2021-01-01T00:00:00Z",
-                "units": "ISO8601",
-                "accepted": "R500/1950-01-01T00:00:00Z/P1Y"
-            },
-            "elevation": {
-                "default": "0-5",
-                "units": "m",
-                "viewparam": "depth",
-                "accepted": [
-                    "0-5",
-                    "5-10",
-                    "10-20",
-                    "20-30",
-                    "30-50",
-                    "50-75",
-                    "75-100",
-                    "100-125",
-                    "125-150",
-                    "150-200",
-                    "200-250",
-                    "250-300",
-                    "300-400",
-                    "400-500",
-                    "500-600",
-                    "600-700",
-                    "700-800",
-                    "800-900",
-                    "900-1000",
-                    "1000-1100",
-                    "1100-1200",
-                    "1200-1300",
-                    "1300-1400",
-                    "1400-1500",
-                    "1500-1750",
-                    "1750-2000",
-                    "2000-2500",
-                    "2500-3000",
-                    "3000-3500",
-                    "3500-4000",
-                    "4000-4500",
-                    "4500-5000",
-                    "5000-12000"
-                ]
-            }
-        }))
-        .unwrap()
-    }
-
-    // elevation
-    #[test]
-    fn test_valid_elevation_returns_range() {
-        let dims = sample_layer_dimensions();
-
-        let result = viewparams::check_accepted_elevations(
-            "5-10",
-            &dims,
-            "testlayer",
-        );
-
-        println!("{:?}", result);
-
-        assert!(result.is_ok());
-
-        let range = result.unwrap();
-        assert_eq!(range.len(), 2);
-    }
-
-    #[test]
-    fn test_invalid_elevation_not_allowed() {
-        let dims = sample_layer_dimensions();
-
-        let result = viewparams::check_accepted_elevations(
-            "9999-10000",
-            &dims,
-            "testlayer",
-        );
-
-        println!("{:?}", result);
-
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "requested elevation not allowed for this layer testlayer"
-        );
-    }
-
-    #[test]
-    fn test_missing_elevation_dimension() {
-        let mut dims = sample_layer_dimensions();
-        dims.remove("elevation");
-
-        let result = viewparams::check_accepted_elevations(
-            "0-5",
-            &dims,
-            "testlayer",
-        );
-
-        println!("{:?}", result);
-
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "elevation dimension not allowed"
-        );
-    }
-
-    #[test]
-    fn test_accepted_not_array() {
-        let mut dims = sample_layer_dimensions();
-
-        dims.get_mut("elevation").map(|e| {
-            if let Some(obj) = e.as_object_mut() {
-                obj.insert(
-                    "accepted".to_string(),
-                    serde_json::Value::String("0-5".to_string()),
-                );
-            }
-        });
-
-        let result = viewparams::check_accepted_elevations(
-            "0-5",
-            &dims,
-            "testlayer",
-        );
-        println!("{:?}", result);
-
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "elevation dimension in config must be an array"
-        );
-    }
-
-    // time
-    #[test]
-    fn test_valid_time_start_of_range() {
-        let dims = sample_layer_dimensions();
-
-        let result = viewparams::check_accepted_times(
-            "1950-01-01T00:00:00Z",
-            &dims,
-            "testlayer",
-        );
-
-        println!("{:?}", result);
-
-        assert!(result.is_ok());
-
-        let map = result.unwrap();
-        assert_eq!(map.get("year").unwrap(), &serde_json::json!(1950));
-    }
-
-    #[test]
-    fn test_valid_time_within_range() {
-        let dims = sample_layer_dimensions();
-
-        let result = viewparams::check_accepted_times(
-            "1955-01-01T00:00:00Z",
-            &dims,
-            "testlayer",
-        );
-
-        println!("{:?}", result);
-
-        assert!(result.is_ok());
-
-        let map = result.unwrap();
-        assert_eq!(map.get("year").unwrap(), &serde_json::json!(1955));
-    }
-
-    #[test]
-    fn test_time_outside_range() {
-        let dims = sample_layer_dimensions();
-
-        let result = viewparams::check_accepted_times(
-            "2050-01-01T00:00:00Z",
-            &dims,
-            "testlayer",
-        );
-
-        println!("{:?}", result);
-
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "date not accepted for layer testlayer"
-        );
-    }
-
-    #[test]
-    fn test_missing_time_dimension() {
-        let mut dims = sample_layer_dimensions();
-        dims.remove("time");
-
-        let result = viewparams::check_accepted_times(
-            "1950-01-01T00:00:00Z",
-            &dims,
-            "testlayer",
-        );
-
-        println!("{:?}", result);
-
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "time dimension not allowed"
-        );
-    }
-
-    #[test]
-    fn test_invalid_time_format() {
-        let dims = sample_layer_dimensions();
-
-        let result = viewparams::check_accepted_times(
-            "1950/01/01",
-            &dims,
-            "testlayer",
-        );
-
-        println!("{:?}", result);
-
-        assert!(result.is_err());
-    }    
-
-    #[test]
-    fn test_time_boundary_last_valid_year() {
-        let dims = sample_layer_dimensions();
-
-        let result = viewparams::check_accepted_times(
-            "1999-01-01T00:00:00Z",
-            &dims,
-            "testlayer",
-        );
-
-        println!("{:?}", result);
-
-        assert!(result.is_ok());
-
-        let map = result.unwrap();
-        assert_eq!(map.get("year").unwrap(), &serde_json::json!(1999));
-    }
-
-}

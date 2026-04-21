@@ -160,8 +160,11 @@
 <div id="status-bar">Ready</div>
 
 <script>
-  const WMS_URL = 'http://localhost:3000/workspaces/argo/wms';
+  
+  //const WMS_URL = 'http://cdi/envri-hub/wms/workspaces/default/wms';
+  const WMS_URL = 'http://localhost:3000/wms';
   //const WMS_URL = 'https://ows.emodnet-bathymetry.eu/wms';
+
   const layerControls = document.getElementById('layer-controls');
   const layerConfigs = [];
   const wmsLayers = new Map();
@@ -546,6 +549,7 @@
   const statusBar    = document.getElementById('status-bar');
   const clickCoords  = document.getElementById('click-coords');
   const infoContent  = document.getElementById('feature-info-content');
+  const clickMarker = L.circleMarker([0, 0], { radius: 6, color: '#c0392b', fillColor: '#e74c3c', fillOpacity: 0 })
 
   queryToggle.addEventListener('change', () => {
     if (queryToggle.checked) {
@@ -563,6 +567,13 @@
     if (!queryToggle.checked) return;
 
     const latlng   = e.latlng;
+
+    if(map.hasLayer(clickMarker)) {
+      map.removeLayer(clickMarker);
+    }
+    //place marker at clicked location
+    clickMarker.setLatLng(latlng).addTo(map);
+
     const size     = map.getSize();          // {x: px_width, y: px_height}
     const bounds   = map.getBounds();
     const point    = map.latLngToContainerPoint(latlng); // pixel offset from top-left

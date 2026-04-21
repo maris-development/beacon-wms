@@ -24,6 +24,20 @@ pub fn get_feature_info(
     layer_filepath: &str,
     file: File
 ) -> Result<Vec<Feature>, MapError> {
+
+    match file.metadata() {
+        Ok(metadata) => {
+            if metadata.len() == 0 {
+                return Ok(Vec::new());
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to get file metadata ({}): {}", layer_filepath,e);
+            return Err(MapError::Error(e.to_string()));
+        }
+    }
+
+    
     let source_projection_code = "EPSG:4326";
     let target_projection_code = crs;
 
@@ -129,9 +143,7 @@ pub fn get_feature_info(
         let zipped_iterator = latitude_column
             .zip(longitude_column);
 
-        let mut row_idx = 0;
-        for (lat, lng) in zipped_iterator {
-            row_idx += 1;
+        for (row_index, (lat, lng)) in zipped_iterator.enumerate() {           
             
             if results.len() == results.capacity(){
                 break;
@@ -150,6 +162,7 @@ pub fn get_feature_info(
             if bbox_of_interest_wgs84.in_bbox((lng, lat), None) {
                 // Forward-project the matched WGS84 point to target CRS for the response geometry.
                 let mut _coordinates = (lng, lat);
+
                 misc::transform_coordinates(
                     source_projection_code,
                     target_projection_code,
@@ -180,12 +193,12 @@ pub fn get_feature_info(
 
                     let col = batch.column(col_idx);
 
-                    if col.is_null(row_idx) {
+                    if col.is_null(row_index) {
                         continue;
                     }
 
                     // Convert value to JSON (simple case: primitive types)
-                    let string_value = misc::get_string_value(col, row_idx);
+                    let string_value = misc::get_string_value(col, row_index);
 
                     _properties.insert(col_name.clone(), Value::String(string_value));
 

@@ -1,5 +1,4 @@
 export type ConfigFile = {
-    secret?: string;
     server?: ServerConfig;
     workspaces?: WorkspaceConfig[];
 }
@@ -26,7 +25,7 @@ export type LayerConfig = {
     config: {
         default_style: string; // name of the default style to use when none is specified
         instance_url: string; // URL of the WMS instance
-        token: string;        // API token for authentication
+        token?: string;        // DEPRECATED, use env var instead.
         query: Record<string, any>; // query being executed to fetch data
         min_value?: number;     // minimum value for the layer
         max_value?: number;     // maximum value for the layer

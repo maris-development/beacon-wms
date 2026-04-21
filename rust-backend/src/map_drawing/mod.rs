@@ -32,7 +32,6 @@ pub const SMALL_ICON_ZOOMLEVEL: u32 = 8;
 pub fn get_map(
     image: &mut RgbaImage,
     bounding_box: BoundingBox,
-    layer: &str,
     color_map: ColorMap,
     crs: &str,
     layer_filepath: String,
@@ -40,6 +39,19 @@ pub fn get_map(
     icon_shape: &str,
     profiling: &mut RequestProfiling
 ) -> Result<usize, MapError> {
+
+    match file.metadata() {
+        Ok(metadata) => {
+            if metadata.len() == 0 {
+                return Ok(0);
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to get file metadata ({}): {}", layer_filepath,e);
+            return Err(MapError::Error(e.to_string()));
+        }
+    }
+
     let source_projection_code = "EPSG:4326";
     let target_projection_code = crs;
 

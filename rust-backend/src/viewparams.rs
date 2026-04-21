@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use chrono::{DateTime, Utc, Datelike, Duration};
 
 use crate::{
-    boundingbox::BoundingBox, color_maps::ColorMapsConfig, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, query_parameters::{GetFeatureInfoRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling
+     config::LayerConfig
 };
 
 // ============================================
@@ -212,7 +212,7 @@ pub fn apply_viewparams_to_query(
         }
     }
 
-    println!("applied query string {}", query_str);
+    println!("Applied viewparams to query: {}", query_str);
 
     query_str
 }
@@ -444,16 +444,34 @@ pub fn check_accepted_times(
 
     let period_str = parts[2];
 
-    let unit = match period_str {
-        "P1Y" => "year",
-        "P1M" => "month",
-        "P1D" => "day",
-        _ => {
-            return Err(format!(
+    // Parse PnY / PnM / PnD where n is any positive integer
+    let period_re = Regex::new(r"^P(\d+)(Y|M|D)$")
+        .map_err(|_| "Internal regex error".to_string())?;
+
+    let (step, unit) = match period_re.captures(period_str) {
+        Some(caps) => {
+            let n: u32 = caps[1].parse().map_err(|_| format!(
                 "time format in layer {} does not conform to Rn/YYYY-MM-DDThh:mm:ssZ/interval",
                 layername
-            ))
+            ))?;
+            if n == 0 {
+                return Err(format!(
+                    "time format in layer {} does not conform to Rn/YYYY-MM-DDThh:mm:ssZ/interval",
+                    layername
+                ));
+            }
+            let unit = match &caps[2] {
+                "Y" => "year",
+                "M" => "month",
+                "D" => "day",
+                _ => unreachable!(),
+            };
+            (n, unit)
         }
+        None => return Err(format!(
+            "time format in layer {} does not conform to Rn/YYYY-MM-DDThh:mm:ssZ/interval",
+            layername
+        )),
     };
 
     //==================================
@@ -477,12 +495,14 @@ pub fn check_accepted_times(
         }
 
         current = match unit {
-            "year" => current.with_year(current.year() + 1).ok_or("invalid date")?,
+            "year" => current
+                .with_year(current.year() + step as i32)
+                .ok_or("invalid date")?,
             "month" => {
                 let mut y = current.year();
-                let mut m = current.month() as i32 + 1;
+                let mut m = current.month() as i32 + step as i32;
 
-                if m > 12 {
+                while m > 12 {
                     y += 1;
                     m -= 12;
                 }
@@ -492,7 +512,7 @@ pub fn check_accepted_times(
                     .and_then(|d| d.with_month(m as u32))
                     .ok_or("invalid date")?
             }
-            "day" => current + Duration::days(1),
+            "day" => current + Duration::days(step as i64),
             _ => unreachable!(),
         };
 
@@ -509,32 +529,37 @@ pub fn check_accepted_times(
 
     match unit {
         "year" => {
-            result.insert("year".to_string(), Value::from(requested.year()));
+            if step == 1 {
+                result.insert("year".to_string(), Value::from(requested.year()));
+            } else {
+                result.insert("year_from".to_string(), Value::from(requested.year()));
+                result.insert("year_to".to_string(), Value::from(requested.year() + step as i32 - 1));
+            }
         }
-       "month" => {
-           let year = requested.year();
-           let month = requested.month();
-        
-           // compute next month
-           let (next_year, next_month) = if month == 12 {
-               (year + 1, 1)
-           } else {
-               (year, month + 1)
-           };
-        
-           // first day of next month
-           let first_next_month = requested
-               .with_year(next_year)
-               .and_then(|d| d.with_month(next_month))
-               .and_then(|d| d.with_day(1))
-               .ok_or("invalid date")?;
-        
-           // last day of current month
-           let last_day = (first_next_month - Duration::days(1)).day();
-        
-           result.insert("year".to_string(), Value::from(year));
-           result.insert("month".to_string(), Value::from(month));
-           result.insert("day".to_string(), Value::from(last_day));
+        "month" => {
+            let year = requested.year();
+            let month = requested.month();
+
+            // compute next month
+            let (next_year, next_month) = if month == 12 {
+                (year + 1, 1)
+            } else {
+                (year, month + 1)
+            };
+
+            // first day of next month
+            let first_next_month = requested
+                .with_year(next_year)
+                .and_then(|d| d.with_month(next_month))
+                .and_then(|d| d.with_day(1))
+                .ok_or("invalid date")?;
+
+            // last day of current month
+            let last_day = (first_next_month - Duration::days(1)).day();
+
+            result.insert("year".to_string(), Value::from(year));
+            result.insert("month".to_string(), Value::from(month));
+            result.insert("day".to_string(), Value::from(last_day));
         }
         "day" => {
             result.insert("year".to_string(), Value::from(requested.year()));
@@ -602,3 +627,485 @@ pub fn apply_dimensions_to_viewparams(
 
     Ok(result)
 }
+
+
+
+#[cfg(test)]
+mod test_parse_dimensions {
+    use super::*;
+    use serde_json::{Value};
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_both_valid() {
+        let time = Some("2024-01-01T12:00:00Z".to_string());
+        let elevation = Some("0/10".to_string());
+
+        let result = parse_time_elevation(&time, &elevation).unwrap();
+
+        let mut expected = HashMap::<String, Value>::new();
+        expected.insert("time".to_string(), Value::String("2024-01-01T12:00:00Z".to_string()));
+        expected.insert("elevation".to_string(), Value::String("0/10".to_string()));
+
+        println!("parsed dimensions: {:?}", result);
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_only_time_valid() {
+        let time = Some("2024-01-01T12:00:00Z".to_string());
+        let elevation = None;
+
+        let result = parse_time_elevation(&time, &elevation).unwrap();
+
+        let mut expected = HashMap::<String, Value>::new();
+        expected.insert("time".to_string(), Value::String("2024-01-01T12:00:00Z".to_string()));
+        println!("parsed dimensions: {:?}", result);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_only_elevation_valid() {
+        let time = None;
+        let elevation = Some("0/10".to_string());
+
+        let result = parse_time_elevation(&time, &elevation).unwrap();
+
+        let mut expected = HashMap::<String, Value>::new();
+        expected.insert("elevation".to_string(), Value::String("0/10".to_string()));
+        println!("parsed dimensions: {:?}", result);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_empty_inputs() {
+        let time: Option<String> = None;
+        let elevation: Option<String> = None;
+
+        let result = parse_time_elevation(&time, &elevation).unwrap();
+
+        let expected = HashMap::<String, Value>::new();
+        println!("parsed dimensions: {:?}", result);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_invalid_time_returns_error() {
+        let time = Some("2024-01-01".to_string()); // invalid
+        let elevation = None;
+
+        let result = parse_time_elevation(&time, &elevation);
+        println!("parsed dimensions: {:?}", result);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Invalid time format. Expected YYYY-MM-DDThh:mm:ssZ"
+        );
+    }
+
+    #[test]
+    fn test_invalid_elevation_returns_error() {
+        let time = None;
+        let elevation = Some("10/0".to_string()); // invalid ordering
+
+        let result = parse_time_elevation(&time, &elevation);
+        println!("parsed dimensions: {:?}", result);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Invalid order of elevation, expected min/max"
+        );
+    }
+
+    #[test]
+    fn test_invalid_time_short_circuits() {
+        let time = Some("bad".to_string());
+        let elevation = Some("0/10".to_string());
+
+        let result = parse_time_elevation(&time, &elevation);
+        println!("parsed dimensions: {:?}", result);
+        // should fail fast on time, elevation ignored
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_invalid_elevation_short_circuits() {
+        let time = Some("2024-01-01T12:00:00Z".to_string());
+        let elevation = Some("a/b".to_string());
+
+        let result = parse_time_elevation(&time, &elevation);
+        println!("parsed dimensions: {:?}", result);
+        assert!(result.is_err());
+    }
+
+    // negative elevation values
+    #[test]
+    fn test_valid_negative_elevation() {
+        let time = None;
+        let elevation = Some("-20/-10".to_string()); // invalid ordering
+
+        let result = parse_time_elevation(&time, &elevation).unwrap();
+
+        let mut expected = HashMap::<String, Value>::new();
+        expected.insert("elevation".to_string(), Value::String("10/20".to_string()));
+        println!("parsed dimensions: {:?}", result);
+        assert_eq!(result, expected);
+    }
+}
+
+// =========================================================================
+// check dimensions
+
+#[cfg(test)]
+mod test_check_dimensions {
+    use super::*;
+    use serde_json::{json};
+    use std::collections::HashMap;
+
+    fn sample_layer_dimensions() -> HashMap<String, serde_json::Value> {
+        serde_json::from_value(json!({
+            "time": {
+                "default": "2021-01-01T00:00:00Z",
+                "units": "ISO8601",
+                "accepted": "R500/1950-01-01T00:00:00Z/P1Y"
+            },
+            "elevation": {
+                "default": "0-5",
+                "units": "m",
+                "viewparam": "depth",
+                "accepted": [
+                    "0-5",
+                    "5-10",
+                    "10-20",
+                    "20-30",
+                    "30-50",
+                    "50-75",
+                    "75-100",
+                    "100-125",
+                    "125-150",
+                    "150-200",
+                    "200-250",
+                    "250-300",
+                    "300-400",
+                    "400-500",
+                    "500-600",
+                    "600-700",
+                    "700-800",
+                    "800-900",
+                    "900-1000",
+                    "1000-1100",
+                    "1100-1200",
+                    "1200-1300",
+                    "1300-1400",
+                    "1400-1500",
+                    "1500-1750",
+                    "1750-2000",
+                    "2000-2500",
+                    "2500-3000",
+                    "3000-3500",
+                    "3500-4000",
+                    "4000-4500",
+                    "4500-5000",
+                    "5000-12000"
+                ]
+            }
+        }))
+        .unwrap()
+    }
+
+    // elevation
+    #[test]
+    fn test_valid_elevation_returns_range() {
+        let dims = sample_layer_dimensions();
+
+        let result = check_accepted_elevations(
+            "5-10",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_ok());
+
+        let range = result.unwrap();
+        assert_eq!(range.len(), 2);
+    }
+
+    #[test]
+    fn test_invalid_elevation_not_allowed() {
+        let dims = sample_layer_dimensions();
+
+        let result = check_accepted_elevations(
+            "9999-10000",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "requested elevation not allowed for this layer testlayer"
+        );
+    }
+
+    #[test]
+    fn test_missing_elevation_dimension() {
+        let mut dims = sample_layer_dimensions();
+        dims.remove("elevation");
+
+        let result = check_accepted_elevations(
+            "0-5",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "elevation dimension not allowed"
+        );
+    }
+
+    #[test]
+    fn test_accepted_not_array() {
+        let mut dims = sample_layer_dimensions();
+
+        dims.get_mut("elevation").map(|e| {
+            if let Some(obj) = e.as_object_mut() {
+                obj.insert(
+                    "accepted".to_string(),
+                    serde_json::Value::String("0-5".to_string()),
+                );
+            }
+        });
+
+        let result = check_accepted_elevations(
+            "0-5",
+            &dims,
+            "testlayer",
+        );
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "elevation dimension in config must be an array"
+        );
+    }
+
+    // time
+    #[test]
+    fn test_valid_time_start_of_range() {
+        let dims = sample_layer_dimensions();
+
+        let result = check_accepted_times(
+            "1950-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_ok());
+
+        let map = result.unwrap();
+        assert_eq!(map.get("year").unwrap(), &serde_json::json!(1950));
+    }
+
+    #[test]
+    fn test_valid_time_within_range() {
+        let dims = sample_layer_dimensions();
+
+        let result = check_accepted_times(
+            "1955-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_ok());
+
+        let map = result.unwrap();
+        assert_eq!(map.get("year").unwrap(), &serde_json::json!(1955));
+    }
+
+    #[test]
+    fn test_time_outside_range() {
+        let dims = sample_layer_dimensions();
+
+        let result = check_accepted_times(
+            "2050-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "date not accepted for layer testlayer"
+        );
+    }
+
+    #[test]
+    fn test_missing_time_dimension() {
+        let mut dims = sample_layer_dimensions();
+        dims.remove("time");
+
+        let result = check_accepted_times(
+            "1950-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "time dimension not allowed"
+        );
+    }
+
+    #[test]
+    fn test_invalid_time_format() {
+        let dims = sample_layer_dimensions();
+
+        let result = check_accepted_times(
+            "1950/01/01",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_time_boundary_last_valid_year() {
+        let dims = sample_layer_dimensions();
+
+        let result = check_accepted_times(
+            "1999-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+
+        assert!(result.is_ok());
+
+        let map = result.unwrap();
+        assert_eq!(map.get("year").unwrap(), &serde_json::json!(1999));
+    }
+
+    fn sample_layer_dimensions_30y() -> HashMap<String, serde_json::Value> {
+        // R2 = 2 advances from start → valid positions: 1950, 1980, 2010
+        serde_json::from_value(json!({
+            "time": {
+                "default": "1950-01-01T00:00:00Z",
+                "units": "ISO8601",
+                "accepted": "R2/1950-01-01T00:00:00Z/P30Y"
+            }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn test_p30y_first_period_returns_year_from_to() {
+        let dims = sample_layer_dimensions_30y();
+
+        let result = check_accepted_times(
+            "1950-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+        assert!(result.is_ok());
+
+        let map = result.unwrap();
+        assert_eq!(map.get("year_from").unwrap(), &serde_json::json!(1950));
+        assert_eq!(map.get("year_to").unwrap(), &serde_json::json!(1979));
+        assert!(map.get("year").is_none());
+    }
+
+    #[test]
+    fn test_p30y_second_period_returns_year_from_to() {
+        let dims = sample_layer_dimensions_30y();
+
+        let result = check_accepted_times(
+            "1980-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+        assert!(result.is_ok());
+
+        let map = result.unwrap();
+        assert_eq!(map.get("year_from").unwrap(), &serde_json::json!(1980));
+        assert_eq!(map.get("year_to").unwrap(), &serde_json::json!(2009));
+    }
+
+    #[test]
+    fn test_p30y_third_period_returns_year_from_to() {
+        let dims = sample_layer_dimensions_30y();
+
+        let result = check_accepted_times(
+            "2010-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+        assert!(result.is_ok());
+
+        let map = result.unwrap();
+        assert_eq!(map.get("year_from").unwrap(), &serde_json::json!(2010));
+        assert_eq!(map.get("year_to").unwrap(), &serde_json::json!(2039));
+    }
+
+    #[test]
+    fn test_p30y_non_boundary_date_rejected() {
+        let dims = sample_layer_dimensions_30y();
+
+        // 1955 is not a valid 30-year boundary starting from 1950
+        let result = check_accepted_times(
+            "1955-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "date not accepted for layer testlayer");
+    }
+
+    #[test]
+    fn test_p30y_out_of_range_rejected() {
+        let dims = sample_layer_dimensions_30y();
+
+        // R3 gives 3 periods: 1950, 1980, 2010 — 2040 is one beyond
+        let result = check_accepted_times(
+            "2040-01-01T00:00:00Z",
+            &dims,
+            "testlayer",
+        );
+
+        println!("{:?}", result);
+        assert!(result.is_err());
+    }
+
+}
+
+
