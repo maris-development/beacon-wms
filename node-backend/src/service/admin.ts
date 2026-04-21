@@ -12,17 +12,11 @@ import logger from "./logger";
 
 export class AdminService {
 
-    private config: Config;
-
-    constructor(config: Config) {
-        this.config = config;
-    }
-
     private checkSecret(req: Request): boolean {
-        const secret = this.config.getSecret();
+        const adminSecret = process.env.ADMIN_SECRET || "";
 
-        if (!secret || secret.trim().length === 0) {
-            throw new Error("No secret set in config");
+        if (!adminSecret || adminSecret.trim().length === 0) {
+            throw new Error("Environment variable ADMIN_SECRET not set. Please set it to a non-empty value to enable admin endpoints.");
         }
 
         const authHeader = req.headers["authorization"];
@@ -33,14 +27,14 @@ export class AdminService {
 
         const token = authHeader.split(" ")[1];
 
-        if (token !== secret) {
+        if (token !== adminSecret) {
             throw new Error("Invalid token");
         }
 
         return true;
     }
 
-    updateLayers(req: Request, res: Response) {
+    clearLayers(req: Request, res: Response) {
 
         try {
             this.checkSecret(req);
@@ -50,16 +44,12 @@ export class AdminService {
             return;
         }
 
-        const url = new URL('/update-layers', BeaconWmsService.getBaseUrl());
+        const url = new URL('/clear-layers', BeaconWmsService.getBaseUrl());
 
         fetch(url)
             .then(async (response) => {
                 if (!response.ok) {
-                    // Always read the response body as text, even for non-OK responses
-                    const text = await response.text();
-                    throw new Error(
-                        `Error updating layers: ${response.status} ${response.statusText} - ${text}`
-                    );
+                    return Promise.reject(response);
                 }
                 return response.text();
             })
@@ -68,12 +58,18 @@ export class AdminService {
                 res.status(200).send(data);
             })
             .catch((err) => {
-                logger.error("Error updating layers:", err);
+                let errorMsg = "Unknown error";
+
+                if (err instanceof Response) {
+                    errorMsg = `Error ${err.status}: ${err.statusText}`;
+                }
+
+                logger.error("Error updating layers:", errorMsg, err);
+
                 // Send a more structured error response
                 res.status(err.response?.status || 500).json({
                     error: "Error updating layers",
-                    message: err.message,
-                    status: err.response?.status,
+                    message: errorMsg,
                 });
             });
     }

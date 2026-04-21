@@ -1,8 +1,7 @@
 use log;
 use std::{collections::HashMap, fs::File, future::Future, sync::Arc};
 use tokio::sync::{Mutex, OnceCell};
-use crate::{beacon_api, config::LayerConfig, viewparams};
-use std::env;
+use crate::{beacon_api, config::LayerConfig, misc, viewparams};
 
 type LockMap = Arc<Mutex<HashMap<String, Arc<OnceCell<File>>>>>;
 
@@ -69,9 +68,7 @@ fn query_file(layer_filepath: String, layer_config: LayerConfig) -> impl Future<
 
         // run query
         let instance_url = &layer_config.config.instance_url;
-        // let auth_token = &layer_config.config.token;
-
-        let auth_token = get_auth_token().map_err(|e| e.to_string())?;
+        let auth_token = misc::get_env_var("BEACON_TOKEN", None);
 
         beacon_api::query(
             &query_str,
@@ -87,12 +84,4 @@ fn query_file(layer_filepath: String, layer_config: LayerConfig) -> impl Future<
             Err(err) => Err(err.to_string()),
         }
     }
-}
-
-fn get_auth_token() -> Result<String, env::VarError> {
-    let auth_token = env::var("BEACON_TOKEN").unwrap_or(String::new());
-
-    // log::info!("BEACON_TOKEN: {}", auth_token);
-    
-    Ok(auth_token)
 }

@@ -75,9 +75,10 @@ pub async fn query(
 
             // if file is empty/no chunks were read then delete the file and return err
             if fs::metadata(file_path).unwrap().len() == 0 {
-                fs::remove_file(file_path)
-                    .map_err(|e| (e.to_string(), 500))?;
-                return Err(("Returned query has file lenght 0".to_string(), 500));
+                log::info!("Returned query has file length 0, no results.");
+                // fs::remove_file(file_path)
+                //     .map_err(|e| (e.to_string(), 500))?;
+                // return Err(("Returned query has file lenght 0".to_string(), 500));
             }
 
         }

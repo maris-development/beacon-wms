@@ -43,7 +43,7 @@ pub struct LayerInnerConfig {
 
     pub default_style: Option<String>,
     pub instance_url: String,
-    pub token: String,
+    pub token: Option<String>, // DEPRECATED, use env var instead.
     pub query: HashMap<String, Value>,
     pub min_value: Option<f64>,
     pub max_value: Option<f64>,
