@@ -95,21 +95,21 @@
                             <Title><%= style.description %> (shape: <%= layer.config.shape %>)</Title>
                         </Style>
                     <% }); %>
-                    
-                    <% Object.entries(layer.config.dimensions).forEach(function([name, dimension]) { %>
-                      <Dimension 
-                        name="<%= name %>" 
-                        default="<%= dimension.default %>" 
-                        units="<%= dimension.units %>">
-                    
-                        <% if (Array.isArray(dimension.accepted)) { %>
-                          <%- dimension.accepted.join(',') -%>
-                        <% } else { %>
-                          <%= dimension.accepted %>
-                        <% } -%>
-                      </Dimension>
-                    <% }); %>
-                       
+                    <% if (layer.config.dimensions) { %>
+                        <% Object.entries(layer.config.dimensions).forEach(function([name, dimension]) { %>
+                        <Dimension 
+                            name="<%= name %>" 
+                            default="<%= dimension.default %>" 
+                            units="<%= dimension.units %>">
+                        
+                            <% if (Array.isArray(dimension.accepted)) { %>
+                            <%- dimension.accepted.join(',') -%>
+                            <% } else { %>
+                            <%= dimension.accepted %>
+                            <% } -%>
+                        </Dimension>
+                        <% }); %>
+                    <% } %>
                     
                 </Layer>
             <% }); %>
