@@ -2,7 +2,6 @@ services:
   rust-backend:
     build:
       context: ./rust-backend
-    container_name: rust-backend
     expose:
       - "8000"
     environment:
@@ -19,7 +18,6 @@ services:
   node-backend:
     build:
       context: ./node-backend
-    container_name: node-backend
     ports:
       - "3000:3000"
     environment:
