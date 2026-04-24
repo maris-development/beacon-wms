@@ -9,7 +9,7 @@ services:
       - HTTP_PORT=8000
       - WORKERS=12
       - CONFIG_DIR=/app/config
-      - CONFIG_FILE=config.json
+      - CONFIG_FILE=${CONFIG_FILE:-config.json}
       - LAYER_DIR=/app/layers
       - LOG_DIR=/app/logs
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
