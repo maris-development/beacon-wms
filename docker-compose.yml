@@ -35,7 +35,7 @@ services:
       - HTTP_PROTOCOL=${HTTP_PROTOCOL:-}
       - RUST_BACKEND_URL=http://rust-backend:8000
       - CONFIG_DIR=/app/config
-      - CONFIG_FILE=config.json
+      - CONFIG_FILE=${CONFIG_FILE:-config.json}
       - LOG_DIR=/app/logs
       - PATH_PREFIX=${PATH_PREFIX:-}
       - ADMIN_SECRET=${ADMIN_SECRET:-}
