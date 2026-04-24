@@ -19,6 +19,11 @@ export class BeaconWmsService {
         "Access-Control-Max-Age": "86400" // Cache preflight response for 24 hours
     };
 
+    public static CACHE_HEADERS = {
+        "Cache-Control": `public, max-age=${86400 * 7}, stale-while-revalidate=3600`,
+        "Expires": new Date(Date.now() + (86400 * 1000 * 7)).toUTCString() // Explicit expiry: 1 week
+    };
+
     constructor(
         private readonly config: Config
     ) {
@@ -220,7 +225,8 @@ export class BeaconWmsService {
                     "Content-Disposition": `inline; filename="map_${urlHash}.png"`,
                     "Content-Type": contentType,
                     "Content-Length": contentLength,
-                    ...BeaconWmsService.CORS_HEADERS
+                    ...BeaconWmsService.CORS_HEADERS, 
+                    ...BeaconWmsService.CACHE_HEADERS
                 });
                             
                 res.end(nodeBuf);
@@ -345,7 +351,7 @@ export class BeaconWmsService {
         // res.send('GetFeatureInfo request received. Parameters: ' + JSON.stringify(wmsGetFeatureInfoParams));
         // return;
         logger.info('GetFeatureInfo URL:', url.toString());
-        
+
         fetch(url)
             .then(r => {
                 if (r.ok) {
