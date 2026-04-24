@@ -53,6 +53,17 @@
                     </HTTP>
                 </DCPType>
             </GetFeatureInfo>
+
+            <GetLegendGraphic>
+                <Format>image/png</Format>
+                <DCPType>
+                    <HTTP>
+                        <Get>
+                            <OnlineResource xlink:href="<%= baseUrl %>?" />
+                        </Get>
+                    </HTTP>
+                </DCPType>
+            </GetLegendGraphic>
         </Request>
         <Exception>
             <Format>application/vnd.ogc.se_xml</Format>
@@ -89,10 +100,18 @@
                     </EX_GeographicBoundingBox>
                     <BoundingBox CRS="EPSG:4326" minx="-90.0" miny="-180.0" maxx="90.0" maxy="180.0"/>
                     <BoundingBox CRS="CRS:84"   minx="-180.0" miny="-90.0" maxx="180.0" maxy="90.0"/>
+                    <% const defaultStyleName = layer.config.default_style || (availableStyles.length > 0 ? availableStyles[0].name : null); %>
                     <% availableStyles.forEach(function(style) { %>
                         <Style>
                             <Name><%= style.name %></Name>
                             <Title><%= style.description %> (shape: <%= layer.config.shape %>)</Title>
+                            <% if (style.name === defaultStyleName) { %>
+                                <LegendURL width="20" height="200">
+                                    <Format>image/png</Format>
+                                    <OnlineResource xlink:type="simple"
+                                        xlink:href="<%= baseUrl %>?SERVICE=WMS&amp;VERSION=<%= wmsVersion %>&amp;REQUEST=GetLegendGraphic&amp;LAYER=<%= layer.id %>&amp;STYLE=<%= style.name %>&amp;WIDTH=20&amp;HEIGHT=200&amp;FORMAT=image/png" />
+                                </LegendURL>
+                            <% } %>
                         </Style>
                     <% }); %>
                     <% if (layer.config.dimensions) { %>

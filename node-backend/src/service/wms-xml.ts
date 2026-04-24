@@ -2,7 +2,6 @@ import { Response, Request } from "express";
 import { Config } from "./config";
 import { WorkspaceConfig } from "../types/config";
 import { BeaconWmsService } from "./beacon-wms";
-import logger from "./logger";
 
 export class WmsXmlService {
     constructor(
@@ -23,8 +22,6 @@ export class WmsXmlService {
     async getCapabilities(req: Request, res: Response, workspace: WorkspaceConfig, availableStyles: string[], wmsVersion: string = "1.3.0") {
         const http_host = process.env.HTTP_HOST || req.get('host');
         const http_protocol = process.env.HTTP_PROTOCOL || req.protocol;
-
-        logger.info(`Generating GetCapabilities for host: ${http_protocol}://${http_host}`);
 
         const params = {
             wmsVersion,

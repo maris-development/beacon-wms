@@ -51,3 +51,14 @@ export type WMSGetFeatureInfoParameters = {
     time?: string;        // Time parameter (optional)
     elevation?: string;   // Elevation parameter (optional)
 };
+
+export type WMSGetLegendGraphicParameters = {
+    service: string;
+    request: string;
+    version: string;
+    layer: string;
+    style?: string;
+    width?: string;
+    height?: string;
+    format?: string;
+};

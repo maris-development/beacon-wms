@@ -21,7 +21,7 @@ export class Config {
 
             data = await readFile(CONFIG_FILE_LOCATION, "utf-8");
 
-        }catch(err){
+        } catch(err) {
             logger.error(err);
         }
 

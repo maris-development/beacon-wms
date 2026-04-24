@@ -16,7 +16,7 @@ config.load(); // async Load config at startup
 
 const http_address = process.env.HTTP_ADDRESS || "0.0.0.0";
 const http_port: number = parseInt(process.env.HTTP_PORT || '3000');
-const template_dir = process.env.TEMPLATE_DIR || path.join(__dirname, "../templates");
+const template_dir = path.join(__dirname, "../templates");
 
 const app = express();
 app.set("views", template_dir);
@@ -30,7 +30,6 @@ app.get(routes.clearLayers.getRoute(), clearLayers);
 
 const server = app.listen(http_port, http_address, () => {
   logger.info(`Node backend listening at http://${http_address}:${http_port}`);
-  logger.info(`Template dir: ${template_dir}`);
 });
 
 server.on("error", (err: NodeJS.ErrnoException) => {

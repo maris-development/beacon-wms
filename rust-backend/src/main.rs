@@ -10,12 +10,14 @@ use std::{collections::HashMap, fs::{self, File}};
 use serde_json::Value;
 use tokio::{runtime::Builder, sync::OnceCell};
 use std::sync::Arc;
+use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
 use crate::{
-    boundingbox::BoundingBox, color_maps::ColorMapsConfig, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, query_parameters::{GetFeatureInfoRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling
+    boundingbox::BoundingBox, color_maps::ColorMapsConfig, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, query_parameters::{GetFeatureInfoRequestParameters, GetLegendGraphicRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling, tile_cache::TileCache
 };
 
+pub mod tile_cache;
 pub mod beacon_api;
 pub mod boundingbox;
 pub mod cache_engine;
@@ -24,6 +26,7 @@ pub mod config;
 pub mod data_utils;
 pub mod errors;
 pub mod image_utils;
+pub mod legend;
 pub mod map_drawing;
 pub mod map_querying;
 pub mod misc;
@@ -39,6 +42,17 @@ type LockMap = Arc<Mutex<HashMap<String, Arc<OnceCell<File>>>>>;
 lazy_static! {
     pub static ref LOCK_MAP: LockMap =  {
         LockMap::default()
+    };
+
+    pub static ref TILE_CACHE: TileCache = {
+        let tile_cache_dir = misc::get_env_var("TILE_CACHE_DIR", Some("../tile_cache"));
+
+        TileCache::new(tile_cache_dir)
+    };
+
+    pub static ref TILE_CACHE_ENABLED: bool = {
+        let enabled = misc::get_env_var("TILE_CACHE_ENABLED", Some("false"));
+        matches!(enabled.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
     };
 }
 
@@ -75,6 +89,7 @@ fn main() {
                 .route("/get-feature-info", get(get_feature_info))
                 .route("/clear-layers", get(clear_layers))
                 .route("/available-styles", get(available_styles))
+                .route("/get-legend-graphic", get(get_legend_graphic))
                 .layer(middleware::from_fn(log_middleware));
 
             let address = format!("{}:{}", address, port);
@@ -87,7 +102,7 @@ fn main() {
 }
 
 async fn log_middleware(req: Request<axum::body::Body>, next: Next) -> Response<axum::body::Body> {
-    log::info!("{} {}", req.method(), req.uri().path());
+    log::debug!("{} {}", req.method(), req.uri().path());
     next.run(req).await
 }
 
@@ -99,6 +114,25 @@ async fn index() -> impl IntoResponse {
 // http://localhost:3000/workspaces/default/wms?viewparams=year:2024;depth:[-10,-20];bbox[-90,-45,90,45]
 
 async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoResponse {
+
+    let cache_extension = misc::get_map_image_extension(&get_map_params.format);
+
+    if *TILE_CACHE_ENABLED {
+        if let Some(extension) = cache_extension {
+            if let Some(mut cached_file) = TILE_CACHE.is_cached(&get_map_params, extension).await {
+                let mut cached_data: Vec<u8> = Vec::new();
+                if let Ok(_) = cached_file.read_to_end(&mut cached_data).await {
+                    log::debug!("Tile cache hit");
+                    return Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", "image/png")
+                        .header("Content-Length", cached_data.len().to_string())
+                        .body(axum::body::Body::from(cached_data))
+                        .unwrap();
+                }
+            }
+        }
+    }
 
     // log::info!("Get map request: {:?}", get_map_params);
 
@@ -359,11 +393,19 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
 
     match output_buffer {
         Ok(_) => {
+            if *TILE_CACHE_ENABLED {
+                if let Some(extension) = cache_extension {
+                    if let Err(e) = TILE_CACHE.cache_tile(&get_map_params, &png_data, extension).await {
+                        log::warn!("Failed to write tile cache: {}", e);
+                    }
+                }
+            }
+
             let response = Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "image/png")
                 .header("Content-Length", png_data.len().to_string())
-                .body(axum::body::Body::from(png_data.clone()))
+                .body(axum::body::Body::from(png_data))
                 .unwrap();
 
             response
@@ -652,6 +694,85 @@ async fn clear_layers() -> impl IntoResponse {
     )
 }
 
+
+async fn get_legend_graphic(
+    params: Query<GetLegendGraphicRequestParameters>,
+) -> impl IntoResponse {
+    let config = misc::read_config_file();
+
+    let workspace = match config.workspaces {
+        Some(workspaces) => workspaces
+            .into_iter()
+            .find(|ws| ws.id == params.workspace)
+            .ok_or_else(|| {
+                (
+                    StatusCode::NOT_FOUND,
+                    format!("Workspace not found: {}", params.workspace),
+                )
+            }),
+        None => {
+            return (StatusCode::BAD_REQUEST, "No workspaces configured".to_string())
+                .into_response();
+        }
+    };
+
+    let workspace = match workspace {
+        Ok(ws) => ws,
+        Err(e) => return e.into_response(),
+    };
+
+    let layer_config = match workspace.layers.iter().find(|l| l.id == params.layer) {
+        Some(l) => l,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                format!("Layer not found in workspace {}: {}", workspace.id, params.layer),
+            )
+                .into_response();
+        }
+    };
+
+    let style = params
+        .style
+        .as_deref()
+        .or(layer_config.config.default_style.as_deref())
+        .unwrap_or("thermal");
+
+    let min_value = layer_config.config.min_value.unwrap_or(-10.0);
+    let max_value = layer_config.config.max_value.unwrap_or(100.0);
+    let log_style = layer_config.config.log_style;
+
+    let color_map = match crate::color_maps::ColorMap::get_named(style, min_value, max_value, log_style) {
+        Some(map) => map,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("Style not found: {}", style),
+            )
+                .into_response();
+        }
+    };
+
+    let width = params.width.unwrap_or(20);
+    let height = params.height.unwrap_or(200);
+
+    let image = legend::draw_legend_graphic(&color_map, width, height);
+
+    let mut png_data: Vec<u8> = Vec::new();
+    match image_utils::rgba_image_to_png(&image, &mut png_data) {
+        Ok(_) => Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "image/png")
+            .header("Content-Length", png_data.len().to_string())
+            .body(axum::body::Body::from(png_data))
+            .unwrap(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Error encoding PNG: {:?}", e),
+        )
+            .into_response(),
+    }
+}
 
 async fn available_styles() -> impl IntoResponse {
     let color_maps_config = match ColorMapsConfig::load() {

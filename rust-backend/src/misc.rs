@@ -3,9 +3,16 @@ use crate::errors::MapError;
 use arrow::{array::{Array, PrimitiveArray, AsArray, Float32Array, Float64Array, Int64Array, Int32Array, StringArray}};
 use arrow::datatypes::{Float32Type, Float64Type, Int16Type, Int32Type, Int8Type};
 use arrow::datatypes::{Int64Type, TimeUnit};
-use chrono::{Datelike, Local};
 use font_loader::system_fonts;
 use image::{Rgba, RgbaImage};
+use log4rs::append::rolling_file::{
+    policy::compound::{
+        roll::fixed_window::FixedWindowRoller,
+        trigger::time::{TimeTrigger, TimeTriggerConfig, TimeTriggerInterval},
+        CompoundPolicy,
+    },
+    RollingFileAppender,
+};
 use proj4rs::Proj;
 use rand::Rng;
 use rusttype::Font;
@@ -20,7 +27,7 @@ use std::{
 
 use lazy_static::lazy_static;
 use log4rs::{
-    append::{console::ConsoleAppender, file::FileAppender},
+    append::console::ConsoleAppender,
     config::{Appender, Root},
     encode::pattern::PatternEncoder,
     Config,
@@ -34,7 +41,6 @@ use sha2::{Sha256, Digest};
 
 pub const ARCTIC_MIN_LATITUDE: f64 = 60.0;
 pub const ANTARCTIC_MAX_LATITUDE: f64 = -60.0;
-
 pub const MERCATOR_MAX_LATITUDE: f64 = 85.06;
 pub const MERCATOR_MIN_LATITUDE: f64 = -85.06;
 
@@ -534,51 +540,61 @@ pub fn print_bbox_on_image(bbox: &BoundingBox, image: &mut RgbaImage) {
 /// Configures logger
 /// Is able to log to a http server, console and file
 pub fn configure_logger() {
-    let log_dir = env::var("LOG_DIR").unwrap_or({
-        //get current directory:
+    let log_dir = get_env_var("LOG_DIR", Some("../logs"));
 
-        let log_dir = env::current_dir()
-            .unwrap()
-            .into_os_string()
-            .into_string()
-            .unwrap()
-            + "/logs";
+    //create dir if not exists:
+    if !std::path::Path::new(&log_dir).exists() {
+        fs::create_dir(&log_dir).unwrap();
+    }
 
-        //create dir if not exists:
-        if !std::path::Path::new(&log_dir).exists() {
-            fs::create_dir(&log_dir).unwrap();
-        }
+    let log_file_location = format!("{}/log_current.ansi.log", log_dir);
+    let rolled_file_pattern = format!("{}/log_{{}}.ansi.log", log_dir);
 
-        log_dir
+    let trigger = TimeTrigger::new(TimeTriggerConfig {
+        interval: TimeTriggerInterval::Day(1),
+        modulate: true,
+        max_random_delay: 0,
     });
 
-    let now = Local::now();
+    let roller = FixedWindowRoller::builder()
+        .build(&rolled_file_pattern, 14)
+        .unwrap();
 
-    let log_file_location = format!("{}/log_{}-{}-{}.ansi.log", log_dir, now.year(), now.month(), now.day());
+    let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
 
-    let logfile = FileAppender::builder()
+    let logfile = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{d} - {l} - {t} - {m};\n")))
-        .build(log_file_location)
+        .build(log_file_location, Box::new(policy))
         .unwrap();
 
     let console_log = ConsoleAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{d} - {l} - {t} - {m};\n")))
         .build();
 
-    // let web_log = appender::WebAppender::builder()
-    //     .encoder(Box::new(PatternEncoder::new("{d} - {l} - {t} - {m};\n")))
-    //     .build("https://www.maris.nl/docker_log_debug.php").unwrap();
+    let log_level = get_env_var("LOG_LEVEL", Some("INFO"));
+
+    let log_level = match log_level.to_uppercase().as_str() {
+        "TRACE" => log::LevelFilter::Trace,
+        "DEBUG" => log::LevelFilter::Debug,
+        "INFO" => log::LevelFilter::Info,
+        "WARN" => log::LevelFilter::Warn,
+        "ERROR" => log::LevelFilter::Error,
+        "" => log::LevelFilter::Info,
+        _ => {
+            eprintln!("NOTICE: Invalid LOG_LEVEL '{}', defaulting to INFO", log_level);
+            log::LevelFilter::Info
+        }
+    };
 
     let config = Config::builder()
         .appender(Appender::builder().build("logfile", Box::new(logfile)))
         .appender(Appender::builder().build("stdout", Box::new(console_log)))
-        // .appender(Appender::builder().build("web_log", Box::new(web_log)))
         .build(
             Root::builder()
                 .appender("logfile")
                 .appender("stdout")
                 //    .appender("web_log")
-                .build(log::LevelFilter::Info),
+                .build(log_level),
         )
         .unwrap();
 
@@ -709,4 +725,12 @@ pub fn hash_viewparams(viewparams: &HashMap<String, Value>) -> String {
 
     // Return as hex string
     hex::encode(result)
+}
+
+pub fn get_map_image_extension(format: &str) -> Option<&'static str> {
+    let format = format.trim().to_ascii_lowercase();
+    match format.as_str() {
+        "image/png" | "png" => Some("png"),
+        _ => None,
+    }
 }

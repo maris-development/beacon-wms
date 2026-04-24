@@ -4,7 +4,7 @@ import { Request, Response } from "express";
 import { WmsXmlService } from "./wms-xml";
 import { WorkspaceConfig } from "../types/config";
 import { request } from "http";
-import { WMSGetFeatureInfoParameters, WMSGetMapParameters } from "../types/ogc-wms";
+import { WMSGetFeatureInfoParameters, WMSGetLegendGraphicParameters, WMSGetMapParameters } from "../types/ogc-wms";
 import logger from "./logger";
 
 export class BeaconWmsService {
@@ -72,6 +72,9 @@ export class BeaconWmsService {
                 break;
             case 'getfeatureinfo':
                 this.handleGetFeatureInfo(req, res, wsConfig, queryParameters);
+                break;
+            case 'getlegendgraphic':
+                this.handleGetLegendGraphic(req, res, wsConfig, queryParameters);
                 break;
             default:
                 this.wmsXml.error(res, "InvalidParameterValue", `The 'request' parameter value '${wmsRequest}' is not supported`);
@@ -342,6 +345,7 @@ export class BeaconWmsService {
         // res.send('GetFeatureInfo request received. Parameters: ' + JSON.stringify(wmsGetFeatureInfoParams));
         // return;
         logger.info('GetFeatureInfo URL:', url.toString());
+        
         fetch(url)
             .then(r => {
                 if (r.ok) {
@@ -371,6 +375,65 @@ export class BeaconWmsService {
                     logger.error(response);
                 }
                 this.wmsXml.error(res, "ServerError", `Error fetching feature info from Rust service: ${response.statusText || response}`);
+            });
+    }
+
+    private handleGetLegendGraphic(req: Request, res: Response, workspace: WorkspaceConfig, queryParameters: Record<string, any>) {
+        const params: WMSGetLegendGraphicParameters = {
+            service: queryParameters['service'],
+            request: queryParameters['request'],
+            version: queryParameters['version'],
+            layer: queryParameters['layer'],
+            style: queryParameters['style'],
+            width: queryParameters['width'],
+            height: queryParameters['height'],
+            format: queryParameters['format'],
+        };
+
+        if (!params.layer) {
+            this.wmsXml.error(res, "MissingParameterValue", "The 'layer' parameter is required for GetLegendGraphic requests");
+            return;
+        }
+
+        const layer = workspace.layers.find(l => l.id === params.layer);
+        if (!layer) {
+            this.wmsXml.error(res, "InvalidParameterValue", `Layer '${params.layer}' not found in workspace '${workspace.id}'`);
+            return;
+        }
+
+        const url = new URL("/get-legend-graphic", this.beaconWmsBaseUrl);
+        url.searchParams.append("workspace", workspace.id);
+        url.searchParams.append("layer", params.layer);
+        if (params.style) url.searchParams.append("style", params.style);
+        if (params.width) url.searchParams.append("width", params.width);
+        if (params.height) url.searchParams.append("height", params.height);
+
+        fetch(url)
+            .then(r => {
+                if (r.ok) {
+                    return r.arrayBuffer().then(buf => ({ buf, headers: r.headers }));
+                }
+                return Promise.reject(r);
+            })
+            .then(({ buf, headers }) => {
+                const nodeBuf = Buffer.from(buf);
+                const contentType = headers.get("Content-Type") || "image/png";
+                const contentLength = headers.get("Content-Length") || nodeBuf.length.toString();
+
+                res.writeHead(200, {
+                    "Content-Type": contentType,
+                    "Content-Length": contentLength,
+                    ...BeaconWmsService.CORS_HEADERS
+                });
+                res.end(nodeBuf);
+            })
+            .catch(response => {
+                try {
+                    response.text().then((text: string) => logger.error(text));
+                } catch (_) {
+                    logger.error(response);
+                }
+                this.wmsXml.error(res, "ServerError", `Error fetching legend graphic from Rust service: ${response.statusText || response}`);
             });
     }
 

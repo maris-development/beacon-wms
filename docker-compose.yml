@@ -5,14 +5,22 @@ services:
     expose:
       - "8000"
     environment:
+      - HTTP_ADDRESS=0.0.0.0
       - HTTP_PORT=8000
+      - WORKERS=12
       - CONFIG_DIR=/app/config
+      - CONFIG_FILE=config.json
       - LAYER_DIR=/app/layers
       - LOG_DIR=/app/logs
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TILE_CACHE_ENABLED=${TILE_CACHE_ENABLED:-false}
+      - TILE_CACHE_DIR=/app/tile_cache
+      - BEACON_TOKEN=${BEACON_TOKEN:-}
     volumes:
       - ./logs:/app/logs
       - ./config:/app/config:ro
       - ./layers:/app/layers
+      - ./tile_cache:/app/tile_cache
     restart: unless-stopped
 
   node-backend:
@@ -22,13 +30,15 @@ services:
       - "3000:3000"
     environment:
       - HTTP_ADDRESS=0.0.0.0
-      - HTTP_PORT=3000
-      - HTTP_HOST=beacon-ihm.maris.nl
-      - HTTP_PROTOCOL=https
+      - HTTP_PORT=3000 #internal port, not exposed to host
+      - HTTP_HOST=${HTTP_HOST:-}
+      - HTTP_PROTOCOL=${HTTP_PROTOCOL:-}
       - RUST_BACKEND_URL=http://rust-backend:8000
       - CONFIG_DIR=/app/config
+      - CONFIG_FILE=config.json
       - LOG_DIR=/app/logs
-      - PATH_PREFIX=/wms
+      - PATH_PREFIX=${PATH_PREFIX:-}
+      - ADMIN_SECRET=${ADMIN_SECRET:-}
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
