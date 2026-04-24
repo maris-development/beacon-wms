@@ -37,8 +37,6 @@ export class WmsXmlService {
             "Expires": new Date(Date.now() + 86400 * 1000).toUTCString() // Explicit expiry: 1 day
         }
 
-        console.log(params.workspace.layers)
-
         res
             .set(headers) // do this but good
             .contentType("application/xml")
