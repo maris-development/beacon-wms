@@ -1,11 +1,7 @@
 use futures::StreamExt;
 use reqwest::StatusCode;
+use tokio::io::AsyncWriteExt;
 use std::string::ToString;
-use std::{
-    fs::{self},
-    io::{Write},
-}; 
-
 
 
 
@@ -50,7 +46,8 @@ pub async fn query(
 
     match response.status() {
         StatusCode::OK => {
-            let mut file = fs::File::create(file_path)
+            let mut file = tokio::fs::File::create(file_path)
+                .await
                 .map_err(|e| (e.to_string(), 500))?;
             
             let mut stream = response.bytes_stream();
@@ -62,23 +59,20 @@ pub async fn query(
                     Ok(bytes) => bytes,
                     Err(e) => {
                         // cleanup partial file
-                        let _ = fs::remove_file(file_path);
+                        let _ = tokio::fs::remove_file(file_path).await;
                         return Err((e.to_string(), 500));
                     }
                 };
-            
-                if let Err(e) = file.write_all(&chunk) {
-                    let _ = fs::remove_file(file_path);
+
+                if let Err(e) = file.write_all(&chunk).await {
+                    let _ = tokio::fs::remove_file(file_path).await;
                     return Err((e.to_string(), 500));
                 }
             }
 
             // if file is empty/no chunks were read then delete the file and return err
-            if fs::metadata(file_path).unwrap().len() == 0 {
+            if tokio::fs::metadata(file_path).await.unwrap().len() == 0 {
                 log::info!("Returned query has file length 0, no results.");
-                // fs::remove_file(file_path)
-                //     .map_err(|e| (e.to_string(), 500))?;
-                // return Err(("Returned query has file lenght 0".to_string(), 500));
             }
 
         }

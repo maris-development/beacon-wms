@@ -24,12 +24,23 @@ pub async fn get_dataset_file(
 }
 
 
-async fn get_or_execute_dataset<F : FnOnce() -> Fut, Fut: Future<Output = Result<File, String>>>(lock_map: &LockMap, view_params_key: String, fut: F) -> Result<File,String> {
-    // let key_for_log = view_params_key.clone();
-    let mut locked_map = lock_map.lock().await;
-    let once_cell= locked_map.entry(view_params_key).or_insert(Arc::new(OnceCell::new()));
+async fn get_or_execute_dataset<F, Fut>(
+    lock_map: &LockMap, 
+    view_params_key: String, 
+    fut: F
+) -> Result<File,String>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<File, String>>, {
+    let mut map = lock_map.lock().await;
+
+    let once_cell = map.entry(view_params_key)
+            .or_insert_with(|| Arc::new(OnceCell::new()))
+            .clone();
+
+    std::mem::drop(map);
+
     let resolved = once_cell.get_or_try_init(fut).await;
-    // log::info!("Fetching file for viewparams key: {}", key_for_log);
     resolved.map(|f| f.try_clone().unwrap())
 } 
 
