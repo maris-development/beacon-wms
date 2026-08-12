@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::string::ToString;
 use std::sync::{Arc, RwLock};
+use std::time::SystemTime;
 use std::{
     env,
     fs::{self},
@@ -44,9 +45,17 @@ pub const ANTARCTIC_MAX_LATITUDE: f64 = -60.0;
 pub const MERCATOR_MAX_LATITUDE: f64 = 85.06;
 pub const MERCATOR_MIN_LATITUDE: f64 = -85.06;
 
+/// Parsed config file plus the file state it was parsed from.
+struct CachedConfig {
+    path: String,
+    modified: Option<SystemTime>,
+    config: Arc<crate::config::ConfigFile>,
+}
+
 // Initialize the cache
 lazy_static! {
     static ref PROJ_CACHE: RwLock<HashMap<String, Proj>> = RwLock::new(HashMap::new());
+    static ref CONFIG_CACHE: RwLock<Option<CachedConfig>> = RwLock::new(None);
 }
 
 pub fn get_string_value(col: &Arc<dyn Array>, row_idx: usize) -> String {
@@ -605,14 +614,59 @@ pub fn configure_logger() {
     log::info!("Logger configured, logging to: {}", log_dir);
 }
 
-pub fn read_config_file() -> crate::config::ConfigFile {
+pub fn get_config_file_location() -> String {
     let config_file = get_env_var("CONFIG_FILE", Some("config.json"));
     let config_dir = get_env_var("CONFIG_DIR", Some("../config"));
-    let config_file_location = format!("{}/{}", config_dir, config_file);
-    let json_str =
-        std::fs::read_to_string(config_file_location).expect("Failed to read config file");
 
-    serde_json::from_str(&json_str).unwrap()
+    format!("{}/{}", config_dir, config_file)
+}
+
+/// Read and parse the config file.
+///
+/// The parsed result is cached. The file is only read again when its path or its
+/// modification time changes, so an edit still applies without a restart.
+pub fn read_config_file() -> Result<Arc<crate::config::ConfigFile>, String> {
+    let config_file_location = get_config_file_location();
+    let modified = fs::metadata(&config_file_location)
+        .and_then(|metadata| metadata.modified())
+        .ok();
+
+    // Serve from cache while the file on disk is unchanged.
+    if modified.is_some() {
+        let cache = CONFIG_CACHE.read().unwrap();
+
+        if let Some(cached) = cache.as_ref() {
+            if cached.path == config_file_location && cached.modified == modified {
+                return Ok(cached.config.clone());
+            }
+        }
+    }
+
+    let json_str = fs::read_to_string(&config_file_location).map_err(|e| {
+        format!(
+            "Failed to read config file '{}': {}",
+            config_file_location, e
+        )
+    })?;
+
+    let config: crate::config::ConfigFile = serde_json::from_str(&json_str).map_err(|e| {
+        format!(
+            "Failed to parse config file '{}': {}",
+            config_file_location, e
+        )
+    })?;
+
+    let config = Arc::new(config);
+
+    let mut cache = CONFIG_CACHE.write().unwrap();
+
+    *cache = Some(CachedConfig {
+        path: config_file_location,
+        modified,
+        config: config.clone(),
+    });
+
+    Ok(config)
 }
 
 pub fn get_env_var(var_name: &str, default: Option<&str>) -> String {

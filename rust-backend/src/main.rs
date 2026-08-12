@@ -58,11 +58,6 @@ lazy_static! {
 
 
 
-#[derive(Clone)]
-pub struct AppState{
-    pub lock_map: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
-}
-
 fn main() {
     misc::configure_logger();
 
@@ -138,7 +133,13 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
 
     let mut profiling = RequestProfiling::new();
 
-    let config = misc::read_config_file();
+    let config = match misc::read_config_file() {
+        Ok(config) => config,
+        Err(e) => {
+            log::error!("{}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+        }
+    };
 
     // add vars to queries, e.g. jaartal, maandtal, etc.
 
@@ -178,10 +179,11 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
         }
     };
 
-    let workspace = match config.workspaces {
+    let workspace = match config.workspaces.as_ref() {
         Some(workspaces) => workspaces
-            .into_iter()
+            .iter()
             .find(|ws| ws.id == get_map_params.workspace)
+            .cloned()
             .ok_or_else(|| {
                 (
                     StatusCode::NOT_FOUND,
@@ -257,40 +259,37 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
         }
     }
 
-    let mut styles = match &get_map_params.styles {
-        Some(s) => String::from(s),
-        None => String::new(),
-    };
-
-    // Why are we making a string here?
-    if styles.trim().is_empty() {
-        // If no styles provided, default to "thermal" for each layer
-        styles = (0..wms_layers.len())
-            .map(|i: usize| {
-                match &layers_configs[i].config.default_style {
-                    Some(style) => style.clone(),
-                    None => String::from("thermal"),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(",");
-    }
-
-    // and then turning that string back into a vector here?
-    let styles_vec = styles
+    let requested_styles = get_map_params
+        .styles
+        .as_deref()
+        .unwrap_or("")
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect::<Vec<String>>();
 
-    if styles_vec.len() > 0 {
-        if styles_vec.len() != wms_layers.len() {
-            return (
-                StatusCode::BAD_REQUEST,
-                "Number of styles must match number of layers".to_string(),
-            )
-                .into_response();
-        }
+    // Without requested styles, fall back to the default style of each layer.
+    let styles_vec = if requested_styles.is_empty() {
+        layers_configs
+            .iter()
+            .map(|layer| {
+                layer
+                    .config
+                    .default_style
+                    .clone()
+                    .unwrap_or_else(|| String::from("thermal"))
+            })
+            .collect::<Vec<String>>()
+    } else {
+        requested_styles
+    };
+
+    if styles_vec.len() != layers_configs.len() {
+        return (
+            StatusCode::BAD_REQUEST,
+            "Number of styles must match number of layers".to_string(),
+        )
+            .into_response();
     }
 
     profiling.mark("query parsed");
@@ -426,7 +425,13 @@ async fn get_feature_info(
 ) -> impl IntoResponse {
     log::info!("Get feature info request: {:?}", get_feature_info_params);
 
-    let config = misc::read_config_file();
+    let config = match misc::read_config_file() {
+        Ok(config) => config,
+        Err(e) => {
+            log::error!("{}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+        }
+    };
 
     let requested_viewparams: HashMap<String, Value> = viewparams::parse_viewparams(&get_feature_info_params.viewparams);
 
@@ -454,10 +459,11 @@ async fn get_feature_info(
         }
     };
 
-    let workspace = match config.workspaces {
+    let workspace = match config.workspaces.as_ref() {
         Some(workspaces) => workspaces
-            .into_iter()
+            .iter()
             .find(|ws| ws.id == get_feature_info_params.workspace)
+            .cloned()
             .ok_or_else(|| {
                 (
                     StatusCode::NOT_FOUND,
@@ -698,12 +704,19 @@ async fn clear_layers() -> impl IntoResponse {
 async fn get_legend_graphic(
     params: Query<GetLegendGraphicRequestParameters>,
 ) -> impl IntoResponse {
-    let config = misc::read_config_file();
+    let config = match misc::read_config_file() {
+        Ok(config) => config,
+        Err(e) => {
+            log::error!("{}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+        }
+    };
 
-    let workspace = match config.workspaces {
+    let workspace = match config.workspaces.as_ref() {
         Some(workspaces) => workspaces
-            .into_iter()
+            .iter()
             .find(|ws| ws.id == params.workspace)
+            .cloned()
             .ok_or_else(|| {
                 (
                     StatusCode::NOT_FOUND,

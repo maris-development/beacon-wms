@@ -1,6 +1,6 @@
 
 
-import { readFile, writeFile } from "fs/promises";
+import { readFile, stat, writeFile } from "fs/promises";
 import { ConfigFile, ServerConfig, WorkspaceConfig } from "../types/config";
 import logger from "./logger";
 
@@ -10,22 +10,36 @@ const CONFIG_FILE_LOCATION = `${CONFIG_DIR}/${CONFIG_FILE}`; // Config file loca
 
 export class Config {
     private config: ConfigFile | null = null;
+    private loadedModifiedMs: number | null = null;
 
     constructor() {
     }
 
+    /**
+     * Read and parse the config file.
+     *
+     * The parsed result is kept in memory. The file is only read again when its
+     * modification time changes, so an edit still applies without a restart.
+     * On a read or parse error the last good config stays active.
+     */
     public load = async (): Promise<void> => {
-        let data = "{}";
-        
         try {
+            const { mtimeMs } = await stat(CONFIG_FILE_LOCATION);
 
-            data = await readFile(CONFIG_FILE_LOCATION, "utf-8");
+            if (this.config && this.loadedModifiedMs === mtimeMs) {
+                return;
+            }
 
-        } catch(err) {
-            logger.error(err);
+            const data = await readFile(CONFIG_FILE_LOCATION, "utf-8");
+
+            this.config = JSON.parse(data);
+            this.loadedModifiedMs = mtimeMs;
+
+        } catch (err) {
+            logger.error(`Failed to load config file '${CONFIG_FILE_LOCATION}': ${err}`);
+
+            this.config = this.config ?? {};
         }
-
-        this.config = JSON.parse(data);
     }
 
     public save = async (): Promise<void> => {
@@ -35,6 +49,9 @@ export class Config {
 
 
         await writeFile(CONFIG_FILE_LOCATION, JSON.stringify(this.config, null, 2), "utf-8");
+
+        // Force a re-read on the next load, the file changed.
+        this.loadedModifiedMs = null;
     }
 
     private async ensureLoaded() {

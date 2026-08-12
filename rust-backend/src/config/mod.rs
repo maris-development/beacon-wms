@@ -2,20 +2,20 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use serde_json::Value;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConfigFile {
     pub server: Option<ServerConfig>,
     pub workspaces: Option<Vec<WorkspaceConfig>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerConfig {
     pub title: Option<String>,
     pub description: Option<String>,
     pub contact: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkspaceConfig {
     pub id: String,
     pub name: String,

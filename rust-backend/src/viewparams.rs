@@ -149,7 +149,7 @@ pub fn apply_viewparams_to_query(
         _ => return query_str,
     };
 
-    println!("original query string {}", query_str);
+    log::debug!("Original query string: {}", query_str);
 
     for (key, value) in params {
         let key = key.to_lowercase();
@@ -212,7 +212,7 @@ pub fn apply_viewparams_to_query(
         }
     }
 
-    println!("Applied viewparams to query: {}", query_str);
+    log::debug!("Applied viewparams to query: {}", query_str);
 
     query_str
 }
