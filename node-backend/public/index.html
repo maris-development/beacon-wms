@@ -61,7 +61,8 @@
 
                     <span class="spacer"></span>
 
-                    <span class="dock-msg" x-show="loading">Reading GetCapabilities...</span>
+                    <span class="dock-status" x-show="loading">Reading GetCapabilities...</span>
+                    <span class="dock-status" x-show="!loading && !error" x-text="status"></span>
                     <span class="dock-error" x-show="error" x-text="error"></span>
                 </div>
 
@@ -129,10 +130,7 @@
         </div>
 
         <div id="sidebar">
-            <div class="sidebar-header">
-                Feature Info
-                <span x-text="clickCoords"></span>
-            </div>
+            <div class="sidebar-header">Feature Info</div>
 
             <div id="legends" x-show="legends.length > 0">
                 <template x-for="layer in legends" :key="layer.id">
@@ -179,8 +177,6 @@
             </div>
         </div>
     </div>
-
-    <div id="status-bar" x-text="status">Ready</div>
 
 </body>
 

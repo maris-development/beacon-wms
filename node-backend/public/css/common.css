@@ -21,6 +21,12 @@
     --radius: 3px;
     --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --font-size: 13px;
+}
+
+/* One text size for the whole app. Only headings differ, and they scale with it. */
+html {
+    font-size: var(--font-size);
 }
 
 * {
@@ -31,9 +37,23 @@
 
 body {
     font-family: var(--font);
-    font-size: 13px;
     color: var(--text);
     background: var(--bg);
+}
+
+h1 {
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+h3 {
+    font-size: 1rem;
+    font-weight: 600;
 }
 
 a {
@@ -55,14 +75,8 @@ a {
     flex-shrink: 0;
 }
 
-.app-header h1 {
-    font-size: 15px;
-    font-weight: 600;
-}
-
 .app-header a {
     color: var(--text-invert);
-    font-size: 12px;
     text-decoration: underline;
 }
 
@@ -72,7 +86,7 @@ a {
 
 button {
     font-family: inherit;
-    font-size: 12px;
+    font-size: inherit;
     padding: 5px 12px;
     border: 1px solid var(--accent);
     border-radius: var(--radius);
@@ -116,7 +130,7 @@ input[type=text],
 input[type=password],
 select {
     font-family: inherit;
-    font-size: 12px;
+    font-size: inherit;
     padding: 4px 6px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -134,7 +148,6 @@ select {
 
 .badge {
     display: inline-block;
-    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     padding: 2px 6px;
