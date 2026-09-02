@@ -13,6 +13,52 @@ The application consists of two complementary backends:
 
 ---
 
+## Pages
+
+### Map preview
+
+The root URL serves a Leaflet map preview. It reads `/workspaces` for the workspace
+list, then reads GetCapabilities for everything else.
+
+The page gives you:
+
+- a workspace select. The choice goes in the `?workspace=` parameter, so a link is shareable;
+- one row per layer, with a visibility box, a style select and a viewparams text box;
+- a control per TIME and ELEVATION dimension. A dimension with fixed values gets a select;
+- the legend of each visible layer;
+- feature info. Turn on "Query features on click", then click the map.
+
+### Admin page
+
+`/admin` holds the admin controls. The page asks for `ADMIN_SECRET` first. See
+[Manual Refresh](#manual-refresh) for what the buttons do.
+
+Serve the site over HTTPS. The secret travels in a request header, and the page keeps
+it in `sessionStorage` until the tab closes.
+
+### Page files
+
+The pages are plain static files in `node-backend/public/`. There is no build step.
+
+| Path | Content |
+| --- | --- |
+| `public/index.html` | Preview page markup. |
+| `public/admin.html` | Admin page markup. |
+| `public/css/` | `common.css`, `preview.css`, `admin.css`. |
+| `public/js/config.js` | Base tile URL, start view, delays. Edit this first. |
+| `public/js/api.js` | Backend calls. |
+| `public/js/capabilities.js` | GetCapabilities XML parsing. |
+| `public/js/preview.js` | Preview page logic. |
+| `public/js/admin.js` | Admin page logic. |
+
+The pages use [Alpine.js](https://alpinejs.dev/) and [Leaflet](https://leafletjs.com/).
+Both come from `node_modules`, so the pages need no internet access.
+
+Every URL in the HTML is relative, so `PATH_PREFIX` keeps working. Do not write an
+absolute path into these files.
+
+---
+
 ## Getting Started
 
 ### Prerequisites
@@ -118,6 +164,9 @@ The `status` field holds one of these values.
 
 A manual update takes only layers that are in the queue. To queue a layer, request
 it once after `DATASET_TTL_SECONDS` passed.
+
+The [admin page](#admin-page) at `/admin` runs the same calls from the browser. Its
+"Update all" button calls `/admin/update` again until the queue is empty.
 
 ## Node Backend Environment Variables
 

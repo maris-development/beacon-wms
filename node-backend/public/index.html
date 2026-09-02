@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beacon WMS</title>
+
+    <link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
+    <link rel="stylesheet" href="./css/common.css">
+    <link rel="stylesheet" href="./css/preview.css">
+
+    <script src="./vendor/leaflet/leaflet.js"></script>
+    <script type="module" src="./js/preview.js"></script>
+</head>
+
+<body x-data="preview">
+
+    <div id="toolbar">
+        <div class="toolbar-top">
+            <h1 x-text="title">Beacon WMS</h1>
+
+            <label>
+                Workspace
+                <select x-model="workspaceId" @change="selectWorkspace()">
+                    <template x-for="workspace in workspaces" :key="workspace.id">
+                        <option :value="workspace.id" x-text="workspace.name || workspace.id"></option>
+                    </template>
+                </select>
+            </label>
+
+            <span class="workspace-desc" x-text="workspace?.description"></span>
+
+            <label title="Click on the map to query features at that location">
+                <input type="checkbox" x-model="queryOn" @change="toggleQuery()">
+                Query features on click
+            </label>
+
+            <span class="spacer"></span>
+
+            <a :href="`${workspace?.wmsUrl}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities`"
+                target="_blank">GetCapabilities</a>
+            <a href="./admin">Admin</a>
+        </div>
+
+        <div id="layer-controls">
+            <span class="toolbar-msg" x-show="loading">Reading GetCapabilities...</span>
+            <span class="toolbar-error" x-show="error" x-text="error"></span>
+
+            <template x-for="layer in layers" :key="layer.id">
+                <div class="layer-control">
+                    <input type="checkbox" :id="`toggle-${layer.id}`" x-model="layer.visible"
+                        @change="syncLayer(layer)">
+
+                    <label :for="`toggle-${layer.id}`" x-text="layer.title"></label>
+
+                    <select x-model="layer.style" @change="syncLayer(layer)" title="Style">
+                        <option value="">default</option>
+                        <template x-for="style in layer.styles" :key="style">
+                            <option :value="style" x-text="style"></option>
+                        </template>
+                    </select>
+
+                    <input type="text" x-model="layer.viewparams" @input="delayedSync(layer)"
+                        @change="syncLayer(layer)" placeholder="viewparams  e.g. year:2021;depth:0,10"
+                        title="VIEWPARAMS, key:value pairs separated by ;">
+
+                    <template x-for="dimension in layer.dimensions" :key="dimension.name">
+                        <span class="dim-group">
+                            <span class="dim-label" x-text="dimension.label"></span>
+
+                            <template x-if="dimension.discrete">
+                                <select class="dim-select" x-model="layer.dims[dimension.name]"
+                                    @change="syncLayer(layer)" :title="dimension.name">
+                                    <template x-for="value in dimension.values" :key="value">
+                                        <option :value="value" x-text="value"></option>
+                                    </template>
+                                </select>
+                            </template>
+
+                            <template x-if="!dimension.discrete">
+                                <input type="text" class="dim-select" x-model="layer.dims[dimension.name]"
+                                    @input="delayedSync(layer)" @change="syncLayer(layer)"
+                                    :placeholder="dimension.default" :title="dimension.name">
+                            </template>
+                        </span>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <div id="container">
+        <div id="map"></div>
+
+        <div id="sidebar">
+            <div class="sidebar-header">
+                Feature Info
+                <span x-text="clickCoords"></span>
+            </div>
+
+            <div id="legends" x-show="legends.length > 0">
+                <template x-for="layer in legends" :key="layer.id">
+                    <div class="legend">
+                        <img :src="legendFor(layer)" :alt="`Legend of ${layer.title}`">
+                        <span x-text="layer.title"></span>
+                    </div>
+                </template>
+            </div>
+
+            <div id="feature-info-content">
+                <p class="loading" x-show="querying">Loading...</p>
+
+                <p class="error-msg" x-show="featureError" x-text="featureError"></p>
+
+                <p class="no-features" x-show="!querying && !featureError && features === null">
+                    Turn on "Query features on click" and click the map.
+                </p>
+
+                <p class="no-features" x-show="!querying && !featureError && features?.length === 0">
+                    No feature is at this location.
+                </p>
+
+                <template x-for="(feature, index) in features || []" :key="index">
+                    <div class="feature-card" x-show="!querying">
+                        <h3 x-text="featureTitle(feature, index)"></h3>
+
+                        <table>
+                            <template x-for="row in featureRows(feature)" :key="row[0]">
+                                <tr>
+                                    <td x-text="row[0]"></td>
+                                    <td x-text="row[1]"></td>
+                                </tr>
+                            </template>
+
+                            <template x-if="featureRows(feature).length === 0">
+                                <tr>
+                                    <td colspan="2"><em>no properties</em></td>
+                                </tr>
+                            </template>
+                        </table>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <div id="status-bar" x-text="status">Ready</div>
+
+</body>
+
+</html>

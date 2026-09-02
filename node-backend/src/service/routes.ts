@@ -23,7 +23,9 @@ export class Route {
 }
 
 export const routes = {
-    root: new Route(`${path_prefix}/`),
+    workspaces: new Route(`${path_prefix}/workspaces`),
+    adminPage: new Route(`${path_prefix}/admin`),
+    adminCheck: new Route(`${path_prefix}/admin/check`),
     clearLayers: new Route(`${path_prefix}/admin/clear-layers`),
     refreshQueue: new Route(`${path_prefix}/admin/queue`),
     refreshUpdate: new Route(`${path_prefix}/admin/update`),

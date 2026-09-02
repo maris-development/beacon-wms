@@ -16,16 +16,41 @@ config.load(); // async Load config at startup
 
 const http_address = process.env.HTTP_ADDRESS || "0.0.0.0";
 const http_port: number = parseInt(process.env.HTTP_PORT || '3000');
+const path_prefix = process.env.PATH_PREFIX || "";
 const template_dir = path.join(__dirname, "../templates");
+const public_dir = path.join(__dirname, "../public");
+const module_dir = path.join(__dirname, "../node_modules");
 
 const app = express();
 app.set("views", template_dir);
 app.set("view engine", "ejs");
 app.disable("x-powered-by");
+
+// The pages use relative URLs, so a missing slash breaks every asset. Express matches
+// the prefix with and without the slash, so pass the slashed form on instead.
+if (path_prefix) {
+    app.get(path_prefix, (req: Request, res: Response, next: NextFunction) => {
+        if (req.path.endsWith("/")) {
+            next();
+
+            return;
+        }
+
+        res.redirect(302, `${path_prefix}/${req.originalUrl.slice(req.path.length)}`);
+    });
+}
+
+// Static assets come before appMiddleware, so they skip the config reload.
+app.use(`${path_prefix}/vendor/leaflet`, express.static(path.join(module_dir, "leaflet/dist")));
+app.use(`${path_prefix}/vendor/alpine`, express.static(path.join(module_dir, "alpinejs/dist")));
+app.use(path_prefix || "/", express.static(public_dir));
+
 app.use(appMiddleware)
-app.get(routes.root.getRoute(), homepage);
+app.get(routes.workspaces.getRoute(), workspaces);
 app.get(routes.defaultWms.getRoute(), defaultWms);
 app.get(routes.workspaceWms.getRoute(), workspaceWms);
+app.get(routes.adminPage.getRoute(), adminPage);
+app.get(routes.adminCheck.getRoute(), adminCheck);
 app.get(routes.clearLayers.getRoute(), clearLayers);
 app.get(routes.refreshQueue.getRoute(), refreshQueue);
 app.get(routes.refreshUpdate.getRoute(), refreshUpdate);
@@ -44,20 +69,29 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 
 // Route Handlers
 
-async function homepage(req: Request, res: Response) {
-    const workspaces = (await config.getWorkspaces()).map(ws => {
+/// List the workspaces. The preview page reads the layers from GetCapabilities.
+async function workspaces(req: Request, res: Response) {
+    const list = (await config.getWorkspaces()).map(ws => {
         return {
-            'ws': ws,
-            'url': routes.workspaceWms.toPath({ workspaceId: ws.id })
-        }
+            id: ws.id,
+            name: ws.name,
+            description: ws.description,
+            wmsUrl: routes.workspaceWms.toPath({ workspaceId: ws.id })
+        };
     });
 
-    const params = { 
-        workspaces, 
-        server: await config.getServerConfig()
-    };
+    res.json({
+        server: await config.getServerConfig() ?? {},
+        workspaces: list
+    });
+}
 
-    res.render("index", params);
+function adminPage(req: Request, res: Response) {
+    res.sendFile(path.join(public_dir, "admin.html"));
+}
+
+function adminCheck(req: Request, res: Response) {
+    adminService.check(req, res);
 }
 
 async function defaultWms(req: Request, res: Response){

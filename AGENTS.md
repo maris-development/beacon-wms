@@ -43,15 +43,42 @@ Defined in [routes.ts](node-backend/src/service/routes.ts). `PATH_PREFIX` goes b
 
 | Route | Purpose |
 | --- | --- |
-| `/` | HTML index page with the workspace list. |
+| `/` | Leaflet map preview. Static `public/index.html`. |
+| `/workspaces` | JSON workspace list plus the server block. Fills the workspace select. |
 | `/wms` | WMS endpoint of the default workspace. |
 | `/workspaces/:workspaceId/wms` | WMS endpoint of one workspace. |
+| `/admin` | Admin page. Static `public/admin.html`. |
+| `/admin/check` | Validates the bearer token. The admin page calls it before it shows anything. |
 | `/admin/clear-layers` | Deletes the cached parquet layers. Needs `Authorization: Bearer $ADMIN_SECRET`. |
 | `/admin/queue` | Reports the refresh queue. Needs the same bearer token. |
 | `/admin/update` | Refreshes one queued layer and waits for it. Needs the same bearer token. |
 
 The WMS endpoint supports `GetCapabilities`, `GetMap`, `GetFeatureInfo` and `GetLegendGraphic`.
 WMS versions `1.3.0` and `1.1.1` are accepted.
+
+### Static pages
+
+`public/` holds the pages. `express.static` serves it, and also `leaflet/dist` and
+`alpinejs/dist` from `node_modules` under `/vendor`. Both mounts sit before
+`appMiddleware`, so an asset request skips the per-request config reload.
+
+The pages are static files, so they cannot hold `PATH_PREFIX`. **Every asset and API
+URL in the HTML must be relative** (`./css/preview.css`, `./workspaces`). The browser
+resolves those against the directory of the page URL, which already holds the prefix.
+A bare prefix without a trailing slash resolves against `/` instead, so
+[index.ts](node-backend/src/index.ts) redirects `${PATH_PREFIX}` to `${PATH_PREFIX}/`.
+Express matches a route with and without the trailing slash, so that handler passes the
+slashed form on with `next()`. Without that check it redirects to itself.
+
+The preview page reads layers, styles, TIME and ELEVATION from GetCapabilities.
+Viewparams are not in the XML, so each layer keeps a freeform viewparams text box.
+[capabilities.js](node-backend/public/js/capabilities.js) expands the `Rn/start/period`
+TIME form into single values, which turns the time control into a dropdown.
+
+Leaflet objects live in module scope in
+[preview.js](node-backend/public/js/preview.js), never in the Alpine data. Alpine wraps
+its data in proxies, and a proxied layer no longer matches the instance Leaflet holds,
+so `map.removeLayer` fails.
 
 ## 4. Internal routes (rust-backend)
 
@@ -198,10 +225,11 @@ The [README.md](README.md) holds the full table. The important ones:
 | [service/beacon-wms.ts](node-backend/src/service/beacon-wms.ts) | All four WMS operations. Validation and proxy to rust. |
 | [service/wms-xml.ts](node-backend/src/service/wms-xml.ts) | Renders capabilities XML and error XML. |
 | [service/config.ts](node-backend/src/service/config.ts) | Reads and caches `config.json`. |
-| [service/admin.ts](node-backend/src/service/admin.ts) | Bearer token check and clear-layers proxy. |
+| [service/admin.ts](node-backend/src/service/admin.ts) | Bearer token check and the admin proxies. |
 | [service/logger.ts](node-backend/src/service/logger.ts) | Winston, daily rotate to `LOG_DIR`. |
 | [types/](node-backend/src/types/) | Config types and OGC WMS parameter types. |
-| [templates/](node-backend/templates/) | EJS templates. |
+| [templates/](node-backend/templates/) | EJS templates for the WMS XML. |
+| [public/](node-backend/public/) | The preview page and the admin page. Plain HTML, CSS and ES modules. |
 
 ### rust-backend/src
 

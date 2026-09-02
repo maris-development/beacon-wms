@@ -34,6 +34,15 @@ export class AdminService {
         return true;
     }
 
+    /// Validate the admin secret. The admin page calls it before it shows anything.
+    check(req: Request, res: Response) {
+        if (!this.authorize(req, res)) {
+            return;
+        }
+
+        res.status(200).json({ status: "ok" });
+    }
+
     /// Report the datasets that wait for a refresh.
     queue(req: Request, res: Response) {
         if (!this.authorize(req, res)) {

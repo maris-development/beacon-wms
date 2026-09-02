@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beacon WMS Admin</title>
+
+    <link rel="stylesheet" href="./css/common.css">
+    <link rel="stylesheet" href="./css/admin.css">
+
+    <script type="module" src="./js/admin.js"></script>
+</head>
+
+<body x-data="admin">
+
+    <header class="app-header">
+        <h1>Beacon WMS Admin</h1>
+        <span class="spacer"></span>
+        <a href="./">Map preview</a>
+        <template x-if="authorized">
+            <a href="#" @click.prevent="signOut()">Lock</a>
+        </template>
+    </header>
+
+    <main>
+        <template x-if="!authorized">
+            <div class="card gate">
+                <h2>Admin secret</h2>
+                <p class="hint">Enter the value of ADMIN_SECRET.</p>
+
+                <form @submit.prevent="signIn()">
+                    <input type="password" x-model="input" placeholder="Admin secret" autocomplete="current-password"
+                        :disabled="checking">
+
+                    <p class="error-msg" x-show="gateError" x-text="gateError"></p>
+
+                    <button type="submit" :disabled="checking">
+                        <span x-text="checking ? 'Checking...' : 'Unlock'"></span>
+                    </button>
+                </form>
+            </div>
+        </template>
+
+        <template x-if="authorized">
+            <div class="card">
+                <h2>Refresh queue</h2>
+                <p class="hint">A layer enters the queue when a request finds its file past the TTL.</p>
+
+                <div class="actions">
+                    <button class="secondary" @click="loadQueue()" :disabled="loadingQueue || busy">Refresh</button>
+                    <span class="spinner" x-show="loadingQueue"></span>
+                </div>
+
+                <template x-if="queue && queue.queued.length > 0">
+                    <table class="queue">
+                        <thead>
+                            <tr>
+                                <th>Layer</th>
+                                <th>Id</th>
+                                <th>Waiting</th>
+                                <th>File age</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="job in queue.queued" :key="job.layer_filepath">
+                                <tr>
+                                    <td x-text="job.layer_name"></td>
+                                    <td class="mono" x-text="job.layer_id"></td>
+                                    <td x-text="formatSeconds(job.waiting_seconds)"></td>
+                                    <td x-text="formatSeconds(job.stale_age_seconds)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </template>
+
+                <template x-if="queue && queue.queued.length === 0">
+                    <p class="empty">The queue is empty.</p>
+                </template>
+
+                <template x-if="queue && queue.in_progress.length > 0">
+                    <p class="meta">
+                        Running now:
+                        <span x-text="queue.in_progress.join(', ')"></span>
+                    </p>
+                </template>
+
+                <template x-if="queue">
+                    <p class="meta">
+                        Dataset TTL <span x-text="formatSeconds(queue.dataset_ttl_seconds)"></span>,
+                        worker interval <span x-text="formatSeconds(queue.refresh_interval_seconds)"></span>.
+                    </p>
+                </template>
+            </div>
+        </template>
+
+        <template x-if="authorized">
+            <div class="card">
+                <h2>Dataset updates</h2>
+                <p class="hint">
+                    One update queries the datalake and waits for the answer. It can take minutes.
+                </p>
+
+                <div class="actions">
+                    <button @click="updateOne()" :disabled="busy">Update one</button>
+                    <button @click="updateAll()" :disabled="busy">Update all</button>
+                    <span class="spinner" x-show="busy"></span>
+                    <span class="hint" x-show="action" x-text="action"></span>
+                </div>
+
+                <div class="log" x-show="log.length > 0">
+                    <template x-for="(entry, index) in log" :key="index">
+                        <div class="log-entry">
+                            <span class="time" x-text="entry.time"></span>
+                            <span class="badge" :class="entry.badge" x-show="entry.label" x-text="entry.label"></span>
+                            <span class="text" x-text="entry.text"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="authorized">
+            <div class="card">
+                <h2>Layer files</h2>
+                <p class="hint">
+                    This deletes every parquet file. The next map request then waits for a live query.
+                </p>
+
+                <div class="actions">
+                    <button class="danger" @click="clearLayers()" :disabled="busy">Clear layer files</button>
+                </div>
+            </div>
+        </template>
+    </main>
+
+</body>
+
+</html>
