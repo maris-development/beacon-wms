@@ -118,7 +118,8 @@ pub fn get_feature_info(
         return Ok(Vec::new());
     }
 
-    let reader = data_utils::parquet_reader(layer_filepath, file)?;
+    // GetFeatureInfo puts every column in the response properties, so read them all.
+    let reader = data_utils::parquet_reader(layer_filepath, file, None)?;
 
     for (_, batch) in reader.enumerate() {
         let batch = batch.map_err(|e| {

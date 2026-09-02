@@ -106,83 +106,130 @@ pub fn get_string_value(col: &Arc<dyn Array>, row_idx: usize) -> String {
 }
 
 
+/// A resolved projection pair.
+///
+/// Build it once per batch and apply it to every point. The build step holds the
+/// projection lookup, the code compare and the degree checks, so a point costs only
+/// the transform itself.
+pub struct CoordinateTransform {
+    /// None when the source and the target codes are equal. Then a point does not move.
+    projections: Option<(Proj, Proj)>,
+    source_in_degrees: bool,
+    target_in_degrees: bool,
+    min_latitude: Option<f64>,
+    max_latitude: Option<f64>,
+}
+
+impl CoordinateTransform {
+    pub fn new(
+        source_projection_code: &str,
+        target_projection_code: &str,
+    ) -> Result<Self, String> {
+        let source = source_projection_code.to_uppercase();
+        let target = target_projection_code.to_uppercase();
+
+        if source == target {
+            return Ok(CoordinateTransform {
+                projections: None,
+                source_in_degrees: false,
+                target_in_degrees: false,
+                min_latitude: None,
+                max_latitude: None,
+            });
+        }
+
+        let target = match target.as_str() {
+            "EPSG:900913" => String::from("EPSG:3857"),
+            _ => target,
+        };
+
+        let (min_latitude, max_latitude) = latitude_limits(&source, &target);
+
+        Ok(CoordinateTransform {
+            projections: Some((get_projection(&source)?, get_projection(&target)?)),
+            source_in_degrees: is_degree_projection(&source),
+            target_in_degrees: is_degree_projection(&target),
+            min_latitude,
+            max_latitude,
+        })
+    }
+
+    pub fn apply(&self, coordinates: &mut (f64, f64)) -> Result<(), String> {
+        let (source_projection, target_projection) = match &self.projections {
+            Some(pair) => pair,
+            None => return Ok(()),
+        };
+
+        if let Some(min_latitude) = self.min_latitude {
+            if coordinates.1 < min_latitude {
+                coordinates.1 = min_latitude;
+            }
+        }
+
+        if let Some(max_latitude) = self.max_latitude {
+            if coordinates.1 > max_latitude {
+                coordinates.1 = max_latitude;
+            }
+        }
+
+        if self.source_in_degrees {
+            deg_to_rad(coordinates);
+        }
+
+        proj4rs::transform::transform(source_projection, target_projection, coordinates).map_err(
+            |e| {
+                format!(
+                    "Could not convert coordinates: {:?}, {:?}",
+                    coordinates, e
+                )
+            },
+        )?;
+
+        // proj4rs outputs radians for a degree based target CRS
+        if self.target_in_degrees {
+            rad_to_deg(coordinates);
+        }
+
+        Ok(())
+    }
+}
+
+/// Latitude range that the target projection accepts. A point outside it is clamped.
+fn latitude_limits(source: &str, target: &str) -> (Option<f64>, Option<f64>) {
+    if source != "EPSG:4326" {
+        return (None, None);
+    }
+
+    match target {
+        "EPSG:3857" => (Some(MERCATOR_MIN_LATITUDE), Some(MERCATOR_MAX_LATITUDE)),
+        "EPSG:3995" => (Some(ARCTIC_MIN_LATITUDE), None),
+        "EPSG:3031" => (None, Some(ANTARCTIC_MAX_LATITUDE)),
+        _ => (None, None),
+    }
+}
+
+/// True for a projection that uses degrees. proj4rs works in radians.
+fn is_degree_projection(code: &str) -> bool {
+    matches!(
+        code,
+        "EPSG:4326"
+            | "EPSG:4269"
+            | "EPSG:4322"
+            | "EPSG:4283"
+            | "EPSG:4214"
+            | "EPSG:4231"
+            | "EPSG:3995"
+            | "EPSG:3031"
+    )
+}
+
+/// Transform one point. Use `CoordinateTransform` for a loop over many points.
 pub fn transform_coordinates(
     source_projection_code: &str,
     target_projection_code: &str,
     coordinates: &mut (f64, f64),
 ) -> Result<(), String> {
-    //make both uppercase:
-    let source_projection_code = source_projection_code.to_uppercase();
-    let source_projection_code = source_projection_code.as_str();
-    let target_projection_code = target_projection_code.to_uppercase();
-    let target_projection_code = target_projection_code.as_str();
-
-    if source_projection_code == target_projection_code {
-        return Ok(());
-    }
-
-    let target_projection_code = match target_projection_code {
-        "EPSG:900913" | "epsg:900913" => "EPSG:3857",
-        _ => target_projection_code,
-    };
-
-    let source_projection = get_projection(source_projection_code)?;
-    let target_projection = get_projection(target_projection_code)?;
-
-    match source_projection_code {
-        "EPSG:4326" | "epsg:4326" => match target_projection_code {
-            "EPSG:3857" | "epsg:3857" => {
-                if coordinates.1 < MERCATOR_MIN_LATITUDE {
-                    coordinates.1 = MERCATOR_MIN_LATITUDE;
-                }
-                if coordinates.1 > MERCATOR_MAX_LATITUDE {
-                    coordinates.1 = MERCATOR_MAX_LATITUDE;
-                }
-            }
-            "EPSG:3995" | "epsg:3395" => {
-                if coordinates.1 < ARCTIC_MIN_LATITUDE {
-                    coordinates.1 = ARCTIC_MIN_LATITUDE;
-                }
-            }
-            "EPSG:3031" | "epsg:3031" => {
-                if coordinates.1 > ANTARCTIC_MAX_LATITUDE {
-                    coordinates.1 = ANTARCTIC_MAX_LATITUDE;
-                }
-            }
-            _ => {}
-        },
-        _ => {}
-    }
-
-    match source_projection_code {
-        // some projections that use degrees, is there a better way to do this?
-        "epsg:4326" | "epsg:4269" | "epsg:4322" | "epsg:4283" | "epsg:4214" | "epsg:4231"
-        | "epsg:3995" | "epsg:3031" | "EPSG:4326" | "EPSG:4269" | "EPSG:4322" | "EPSG:4283"
-        | "EPSG:4214" | "EPSG:4231" | "EPSG:3995" | "EPSG:3031" => {
-            deg_to_rad(coordinates);
-        }
-        _ => {}
-    }
-
-    proj4rs::transform::transform(&source_projection, &target_projection, coordinates).map_err(
-        |e| {
-            String::from(format!(
-                "Could not convert coordinates: {:?}, {:?}",
-                coordinates, e
-            ))
-        },
-    )?;
-
-    // proj4rs outputs radians for degree-based target CRS, convert back to degrees
-    match target_projection_code {
-        "EPSG:4326" | "EPSG:4269" | "EPSG:4322" | "EPSG:4283"
-        | "EPSG:4214" | "EPSG:4231" | "EPSG:3995" | "EPSG:3031" => {
-            rad_to_deg(coordinates);
-        }
-        _ => {}
-    }
-
-    Ok(())
+    CoordinateTransform::new(source_projection_code, target_projection_code)?.apply(coordinates)
 }
 
 pub fn rad_to_deg(coordinates: &mut (f64, f64)) {

@@ -200,6 +200,22 @@ Resolve the dataset file with `queries::get_dataset_file` **before** you take a 
 That call can wait minutes for a datalake query. A pool thread must never hold a permit
 while it waits for the network.
 
+The pool threads share the reprojection cache. Its lock guards the cache only. Keep the
+reprojection itself outside the lock. Two threads can then reproject the same batch, and
+one of the two results is dropped. That waste costs far less than one lock over a loop of
+128k rows.
+
+`DECODE_GATES` in [map_drawing/mod.rs](rust-backend/src/map_drawing/mod.rs) covers the
+cold case instead. A browser opens a map with 6 to 12 tiles of one layer, and every tile
+needs the same batches. The gate lets one thread read the file and sends the rest to the
+cache after it. Key the gate on `cache_key_base`, the same key as the batch cache. A
+coarser key serializes two CRS for nothing, a finer key dedups nothing. A waiter must
+still check the cache again after the gate, because the LRU can evict. The gate mutex is
+a std mutex, because the draw path runs on the blocking pool.
+
+`misc::CoordinateTransform` resolves a projection pair once. Use it for a loop over many
+points. `misc::transform_coordinates` builds one per call, so it suits single points only.
+
 ## 7. How to run
 
 Docker (both backends):
@@ -267,7 +283,7 @@ The [README.md](README.md) holds the full table. The important ones:
 | [queries.rs](rust-backend/src/queries.rs) | Layer file state: fetch lock, generation, freshness check, atomic replace. |
 | [refresh.rs](rust-backend/src/refresh.rs) | Refresh queue and the background worker. |
 | [beacon_api/mod.rs](rust-backend/src/beacon_api/mod.rs) | Posts the query, streams parquet to disk. |
-| [data_utils.rs](rust-backend/src/data_utils.rs) | Parquet reader helpers. |
+| [data_utils.rs](rust-backend/src/data_utils.rs) | Parquet reader helpers. Column projection. |
 | [cache_engine/mod.rs](rust-backend/src/cache_engine/mod.rs) | LRU cache of reprojected record batches. |
 | [map_drawing/mod.rs](rust-backend/src/map_drawing/mod.rs) | Point drawing. Shapes, radius per zoom, color LUT. |
 | [map_querying/](rust-backend/src/map_querying/) | GetFeatureInfo hit test and output formats. |
@@ -285,6 +301,17 @@ file: `longitude`, `latitude` and `value`. See the constants in
 `EPSG:4326`. The backend reprojects them to the requested CRS.
 
 An empty parquet file is valid. It means the query found no data, and the layer draws nothing.
+
+`data_utils::parquet_reader` takes the column names to read. Drawing asks for `longitude`,
+`latitude` and `value`, so parquet decodes nothing else. On a 359 MB layer that cuts the
+decode from 4.3 s to 1.2 s, because `cdi_link` alone holds 622 MB of uncompressed text.
+GetFeatureInfo passes `None`, because it puts every column in the response properties.
+Build the mask with `ProjectionMask::leaves` and exact name matches. `ProjectionMask::columns`
+matches a name by prefix, so `value` would also take a column named `value_qc`.
+
+A record batch crosses row group boundaries, so `get_parquet_batch_count` gets the count
+from the row count alone. A projection does not change it. Batch cache keys hold that
+index, so both facts must stay true.
 
 ## 11. Rules for changes
 

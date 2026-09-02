@@ -6,7 +6,7 @@ use image::{GenericImage, Pixel, Rgba, RgbaImage};
 use lazy_static::lazy_static;
 use log;
 
-use crate::cache_engine::ReprojectedDatasetCacheEngine;
+use crate::cache_engine::{self, DecodeGates, ReprojectedDatasetCacheEngine};
 use crate::color_maps::ColorMap;
 use crate::data_utils::{self};
 use crate::errors::MapError;
@@ -17,6 +17,9 @@ use std::fs::File;
 lazy_static! {
     pub static ref REPROJECTED_DATASET_CACHE: ReprojectedDatasetCacheEngine =
         ReprojectedDatasetCacheEngine::new();
+
+    /// Keeps concurrent tiles of the same layer and CRS to one parquet decode.
+    pub static ref DECODE_GATES: DecodeGates = DecodeGates::new();
 }
 
 
@@ -107,69 +110,47 @@ pub fn get_map(
     
     profiling.mark("parquet batch count read");
 
-    // Warm-cache path: if all reprojected batches are cached, skip parquet I/O entirely
-    let resolved_batches: Vec<RecordBatch> = if (0..num_batches).all(|i| {
-        REPROJECTED_DATASET_CACHE.is_batch_cached(
-            target_projection_code,
-            &format!("{}_{}", cache_key_base, i),
-        )
-    }) {
-        profiling.mark("all batches cached - skipping parquet I/O");
-        (0..num_batches)
-            .map(|i| {
-                REPROJECTED_DATASET_CACHE
-                    .get_projection_applied_batch(
-                        target_projection_code,
-                        &format!("{}_{}", cache_key_base, i),
-                    )
-                    .expect("cache entry disappeared after warm check")
-            })
-            .collect()
-    } else {
-        let reader = data_utils::parquet_reader(&layer_filepath, file)?;
+    // Warm-cache path: if all reprojected batches are cached, skip parquet I/O entirely.
+    let resolved_batches: Vec<RecordBatch> =
+        match cached_batches(target_projection_code, &cache_key_base, num_batches) {
+            Some(batches) => {
+                profiling.mark("all batches cached - skipping parquet I/O");
+                batches
+            }
+            None => {
+                // Tiles of the same layer and CRS share every batch. The gate sends one
+                // thread to the file and lets the rest read the cache after it.
+                let gate = DECODE_GATES.acquire(&cache_key_base);
+                let guard = cache_engine::lock_gate(&gate);
 
-        profiling.mark("parquet reader created");
-        let mut batches = Vec::with_capacity(num_batches);
-        for (i, batch) in reader.enumerate() {
-            let record_batch_name = format!("{}_{}", cache_key_base, i);
-            profiling.mark(&format!("start reading batch {}", record_batch_name));
-            let batch = match batch {
-                Ok(batch) => {
-                    if let Some(projected_batch) =
-                        REPROJECTED_DATASET_CACHE.get_projection_applied_batch(target_projection_code, &record_batch_name)
-                    {
-                        projected_batch
-                    } else {
-                        profiling.mark(&format!("reprojecting {}", record_batch_name));
-                        // Reproject batch if needed:
-                        let res = REPROJECTED_DATASET_CACHE.apply_projection_to_batch(
-                            source_projection_code,
-                            target_projection_code,
-                            &record_batch_name,
-                            batch,
-                        );
-                        if res.is_err() {
-                            log::error!(
-                                "Could not apply projection to batch: {}",
-                                res.err().unwrap()
-                            );
-                        }
-                        profiling.mark(&format!("reprojecting done {}", record_batch_name));
-                        REPROJECTED_DATASET_CACHE
-                            .get_projection_applied_batch(target_projection_code, &record_batch_name)
-                            .unwrap()
+                profiling.mark("decode gate acquired");
+
+                let result = match cached_batches(
+                    target_projection_code,
+                    &cache_key_base,
+                    num_batches,
+                ) {
+                    Some(batches) => {
+                        profiling.mark("batches cached by another request");
+                        Ok(batches)
                     }
-                }
-                Err(e) => {
-                    log::error!("Error reading batch: {}", e);
-                    return Err(MapError::Error(format!("Error reading batch: {}", e)));
-                }
-            };
-            profiling.mark(&format!("done reading batch {}", record_batch_name));
-            batches.push(batch);
-        }
-        batches
-    };
+                    None => decode_and_cache_batches(
+                        &layer_filepath,
+                        file,
+                        source_projection_code,
+                        target_projection_code,
+                        &cache_key_base,
+                        num_batches,
+                        profiling,
+                    ),
+                };
+
+                drop(guard);
+                DECODE_GATES.release(&cache_key_base, gate);
+
+                result?
+            }
+        };
 
     // Draw all resolved batches
     for (i, batch) in resolved_batches.into_iter().enumerate() {
@@ -266,6 +247,72 @@ pub fn get_map(
     // misc::print_bbox_on_image(&reprojected_bbox, image); //debugging
 
     return Ok(drawn_count);
+}
+
+/// Every reprojected batch of a layer, or None when one of them is missing.
+///
+/// A single miss gives None, because Option collects that way. Zero batches give an
+/// empty vector, so an empty layer never reads the file.
+fn cached_batches(
+    target_projection_code: &str,
+    cache_key_base: &str,
+    num_batches: usize,
+) -> Option<Vec<RecordBatch>> {
+    (0..num_batches)
+        .map(|i| {
+            REPROJECTED_DATASET_CACHE.get_projection_applied_batch(
+                target_projection_code,
+                &format!("{}_{}", cache_key_base, i),
+            )
+        })
+        .collect()
+}
+
+/// Read the layer file, reproject every batch and put the results in the cache.
+///
+/// Call this under the decode gate of the same cache key.
+fn decode_and_cache_batches(
+    layer_filepath: &str,
+    file: File,
+    source_projection_code: &str,
+    target_projection_code: &str,
+    cache_key_base: &str,
+    num_batches: usize,
+    profiling: &mut RequestProfiling,
+) -> Result<Vec<RecordBatch>, MapError> {
+    // Drawing needs three columns. A projection skips the decode of every other column.
+    let reader = data_utils::parquet_reader(
+        layer_filepath,
+        file,
+        Some(&[LONGITUDE_COLUMN, LATITUDE_COLUMN, VALUE_COLUMN]),
+    )?;
+
+    profiling.mark("parquet reader created");
+
+    let mut batches = Vec::with_capacity(num_batches);
+
+    for (i, batch) in reader.enumerate() {
+        let record_batch_name = format!("{}_{}", cache_key_base, i);
+        profiling.mark(&format!("start reading batch {}", record_batch_name));
+
+        let batch = match batch {
+            Ok(batch) => REPROJECTED_DATASET_CACHE.apply_projection_to_batch(
+                source_projection_code,
+                target_projection_code,
+                &record_batch_name,
+                batch,
+            )?,
+            Err(e) => {
+                log::error!("Error reading batch: {}", e);
+                return Err(MapError::Error(format!("Error reading batch: {}", e)));
+            }
+        };
+
+        profiling.mark(&format!("done reading batch {}", record_batch_name));
+        batches.push(batch);
+    }
+
+    Ok(batches)
 }
 
 fn draw_pixel(image: &mut RgbaImage, x: i32, y: i32, color: Rgba<u8>) {
