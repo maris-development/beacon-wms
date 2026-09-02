@@ -6,15 +6,13 @@ use axum::{
     routing::get,
     Router,
 };
-use std::{collections::HashMap, fs::{self, File}};
+use std::{collections::HashMap, fs};
 use serde_json::Value;
-use tokio::{runtime::Builder, sync::OnceCell};
-use std::sync::Arc;
+use tokio::runtime::Builder;
 use tokio::io::AsyncReadExt;
-use tokio::sync::Mutex;
 
 use crate::{
-    boundingbox::BoundingBox, color_maps::ColorMapsConfig, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, query_parameters::{GetFeatureInfoRequestParameters, GetLegendGraphicRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling, tile_cache::TileCache
+    boundingbox::BoundingBox, color_maps::ColorMapsConfig, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, queries::DatasetMap, query_parameters::{GetFeatureInfoRequestParameters, GetLegendGraphicRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling, tile_cache::TileCache
 };
 
 pub mod tile_cache;
@@ -33,16 +31,14 @@ pub mod misc;
 pub mod viewparams;
 pub mod queries;
 pub mod query_parameters;
+pub mod refresh;
 pub mod request_profiling;
 
 use lazy_static::lazy_static;
 
-type LockMap = Arc<Mutex<HashMap<String, Arc<OnceCell<File>>>>>;
-
 lazy_static! {
-    pub static ref LOCK_MAP: LockMap =  {
-        LockMap::default()
-    };
+    /// State of every dataset file: its fetch lock and its generation.
+    pub static ref DATASET_MAP: DatasetMap = DatasetMap::default();
 
     pub static ref TILE_CACHE: TileCache = {
         let tile_cache_dir = misc::get_env_var("TILE_CACHE_DIR", Some("../tile_cache"));
@@ -76,6 +72,9 @@ fn main() {
         .unwrap()
         .block_on(async move {
             log::info!("Starting server on http://{}:{}", address, port);
+
+            // Refresh stale datasets in the background, so requests never wait for it
+            tokio::spawn(refresh::run_scheduler(DATASET_MAP.clone()));
 
             // build our application with a route
             let app = Router::new()
@@ -122,6 +121,7 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
                         .status(StatusCode::OK)
                         .header("Content-Type", "image/png")
                         .header("Content-Length", cached_data.len().to_string())
+                        .header("X-Cache-Hit", "true")
                         .body(axum::body::Body::from(cached_data))
                         .unwrap();
                 }
@@ -328,7 +328,7 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
             ).into_response();
         }
 
-        let file = match queries::get_dataset_file(&LOCK_MAP, layer_filepath.clone(), layer_config.clone()).await{
+        let (file, generation) = match queries::get_dataset_file(&DATASET_MAP, layer_filepath.clone(), layer_config.clone()).await{
             Ok(f) => f,
             Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
         };
@@ -363,6 +363,7 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
             &get_map_params.crs,
             layer_filepath,
             file,
+            generation,
             icon_shape,
             &mut profiling,
         );
@@ -404,6 +405,7 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
                 .status(StatusCode::OK)
                 .header("Content-Type", "image/png")
                 .header("Content-Length", png_data.len().to_string())
+                .header("X-Cache-Hit", "false")
                 .body(axum::body::Body::from(png_data))
                 .unwrap();
 
@@ -599,7 +601,8 @@ async fn get_feature_info(
         
         // log::info!("Getting feature info for layer {}, file path: {}", layer_config.id, layer_filepath);
 
-        let file = match queries::get_dataset_file(&LOCK_MAP, layer_filepath.clone(), layer_config.clone()).await{
+        // get_feature_info reads the parquet directly, so it needs no generation
+        let (file, _generation) = match queries::get_dataset_file(&DATASET_MAP, layer_filepath.clone(), layer_config.clone()).await{
             Ok(f) => f,
             Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
         };

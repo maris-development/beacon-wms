@@ -66,6 +66,26 @@ npm run dev
 | `BEACON_TOKEN` | _(none)_ | Auth token used for Beacon API queries. |
 | `TILE_CACHE_ENABLED` | `false` | Enables tile image cache when set to `1`, `true`, `yes`, or `on`. |
 | `TILE_CACHE_DIR` | `../tile_cache` | Root directory for tile cache files. |
+| `DATASET_TTL_SECONDS` | `86400` | Maximum age of a layer parquet file before the backend queues a refresh. |
+| `REFRESH_INTERVAL_SECONDS` | `1800` | Time between two runs of the background refresh worker. |
+| `REFRESH_CONCURRENCY` | `1` | Number of Beacon refresh queries that run at the same time. |
+
+## Layer Data Refresh
+
+The backend serves the layer parquet file that is on disk. A request never waits
+for a refresh.
+
+1. A request finds a layer file that is older than `DATASET_TTL_SECONDS`.
+2. The backend returns that file and puts the layer in the refresh queue. The
+   queue holds each layer one time.
+3. Every `REFRESH_INTERVAL_SECONDS`, the refresh worker queries Beacon for the
+   queued layers, `REFRESH_CONCURRENCY` at a time.
+4. The worker writes the result to a temporary file and then renames it. The
+   rename is atomic, so a reader never sees a part of the new file.
+5. A failed query keeps the old file. The next request queues the layer again.
+
+Only a missing layer file makes a request wait for a Beacon query. Other requests
+for the same layer wait for that one query.
 
 ## Node Backend Environment Variables
 

@@ -36,6 +36,9 @@ pub fn get_map(
     crs: &str,
     layer_filepath: String,
     file: File,
+    // Version of the dataset file. A refresh increases it, so the cache entries of
+    // the old file become unreachable and drop out of the LRU cache.
+    generation: u64,
     icon_shape: &str,
     profiling: &mut RequestProfiling
 ) -> Result<usize, MapError> {
@@ -95,6 +98,9 @@ pub fn get_map(
     // Read only the parquet footer to determine how many batches exist (no data pages read)
     let num_batches = data_utils::get_parquet_batch_count(&layer_filepath, file.try_clone()?)?;
 
+    // Cache keys carry the generation, so a refreshed file never reuses old batches
+    let cache_key_base = format!("{}#{}_{}", layer_filepath, generation, target_projection_code);
+
     // log::info!("Drawing results for file: {}", layer_filepath);
 
     // log::info!("Reprojection cache: {}/{} entries ({:.1} MB)", REPROJECTED_DATASET_CACHE.cache_len(), crate::cache_engine::LRU_CACHE_SIZE, REPROJECTED_DATASET_CACHE.cache_memory_bytes() as f64 / 1_048_576.0);
@@ -105,7 +111,7 @@ pub fn get_map(
     let resolved_batches: Vec<RecordBatch> = if (0..num_batches).all(|i| {
         REPROJECTED_DATASET_CACHE.is_batch_cached(
             target_projection_code,
-            &format!("{}_{}_{}", layer_filepath, target_projection_code, i),
+            &format!("{}_{}", cache_key_base, i),
         )
     }) {
         profiling.mark("all batches cached - skipping parquet I/O");
@@ -114,7 +120,7 @@ pub fn get_map(
                 REPROJECTED_DATASET_CACHE
                     .get_projection_applied_batch(
                         target_projection_code,
-                        &format!("{}_{}_{}", layer_filepath, target_projection_code, i),
+                        &format!("{}_{}", cache_key_base, i),
                     )
                     .expect("cache entry disappeared after warm check")
             })
@@ -125,7 +131,7 @@ pub fn get_map(
         profiling.mark("parquet reader created");
         let mut batches = Vec::with_capacity(num_batches);
         for (i, batch) in reader.enumerate() {
-            let record_batch_name = format!("{}_{}_{}", layer_filepath, target_projection_code, i);
+            let record_batch_name = format!("{}_{}", cache_key_base, i);
             profiling.mark(&format!("start reading batch {}", record_batch_name));
             let batch = match batch {
                 Ok(batch) => {
@@ -167,7 +173,7 @@ pub fn get_map(
 
     // Draw all resolved batches
     for (i, batch) in resolved_batches.into_iter().enumerate() {
-        let record_batch_name = format!("{}_{}_{}", layer_filepath, target_projection_code, i);
+        let record_batch_name = format!("{}_{}", cache_key_base, i);
 
         let latitude_column = batch
             .column_by_name(LATITUDE_COLUMN)

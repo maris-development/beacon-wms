@@ -16,7 +16,8 @@ export class BeaconWmsService {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        "Access-Control-Max-Age": "86400" // Cache preflight response for 24 hours
+        "Access-Control-Max-Age": "86400", // Cache preflight response for 24 hours
+        "Access-Control-Expose-Headers": "X-Cache-Hit"
     };
 
     public static CACHE_HEADERS = {
@@ -225,6 +226,7 @@ export class BeaconWmsService {
                     "Content-Disposition": `inline; filename="map_${urlHash}.png"`,
                     "Content-Type": contentType,
                     "Content-Length": contentLength,
+                    "X-Cache-Hit": headers.get("X-Cache-Hit") || "false",
                     ...BeaconWmsService.CORS_HEADERS, 
                     ...BeaconWmsService.CACHE_HEADERS
                 });

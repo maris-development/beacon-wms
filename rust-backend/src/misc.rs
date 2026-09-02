@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::string::ToString;
 use std::sync::{Arc, RwLock};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use std::{
     env,
     fs::{self},
@@ -667,6 +667,48 @@ pub fn read_config_file() -> Result<Arc<crate::config::ConfigFile>, String> {
     });
 
     Ok(config)
+}
+
+/// Read a numeric environment variable. An invalid value gives the default.
+fn get_env_number(var_name: &str, default: u64) -> u64 {
+    let raw = get_env_var(var_name, None);
+
+    if raw.is_empty() {
+        return default;
+    }
+
+    match raw.trim().parse::<u64>() {
+        Ok(value) => value,
+        Err(_) => {
+            log::warn!(
+                "Invalid {} '{}', using default {}",
+                var_name,
+                raw,
+                default
+            );
+            default
+        }
+    }
+}
+
+/// Maximum age of a layer file. An older file still goes to the client, but the
+/// refresh worker gets a job to replace it. Default is one day.
+pub fn get_dataset_ttl() -> Duration {
+    Duration::from_secs(get_env_number("DATASET_TTL_SECONDS", 24 * 60 * 60))
+}
+
+/// Time between two runs of the refresh worker. Default is 30 minutes.
+pub fn get_refresh_interval() -> Duration {
+    let seconds = get_env_number("REFRESH_INTERVAL_SECONDS", 30 * 60).max(1);
+
+    Duration::from_secs(seconds)
+}
+
+/// Number of refresh queries that run at the same time. Default is 1.
+pub fn get_refresh_concurrency() -> usize {
+    let value = get_env_number("REFRESH_CONCURRENCY", 1).max(1);
+
+    value as usize
 }
 
 pub fn get_env_var(var_name: &str, default: Option<&str>) -> String {
