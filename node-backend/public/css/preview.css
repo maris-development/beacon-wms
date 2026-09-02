@@ -13,30 +13,22 @@ body {
     color: var(--text-invert);
     padding: var(--space) 14px;
     display: flex;
-    flex-direction: column;
-    gap: var(--space);
-    flex-shrink: 0;
-    max-height: 40vh;
-    overflow-y: auto;
-}
-
-.toolbar-top {
-    display: flex;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+    flex-shrink: 0;
 }
 
-.toolbar-top h1 {
+#toolbar h1 {
     font-size: 15px;
     font-weight: 600;
 }
 
-.toolbar-top .spacer {
+#toolbar .spacer {
     flex: 1;
 }
 
-.toolbar-top a {
+#toolbar a {
     color: var(--text-invert);
     font-size: 12px;
 }
@@ -58,67 +50,157 @@ body {
     opacity: 0.75;
 }
 
-#layer-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.layer-control {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-}
-
-.layer-control label {
-    white-space: nowrap;
-}
-
-.layer-control input[type=text] {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    width: 220px;
-}
-
-.layer-control select.dim-select,
-.layer-control input.dim-select {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    max-width: 200px;
-}
-
-.dim-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.dim-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    opacity: 0.7;
-    margin-left: 4px;
-}
-
-.toolbar-msg {
-    font-size: 12px;
-    opacity: 0.85;
-}
-
-.toolbar-error {
-    font-size: 12px;
-    color: #ffb4ab;
-}
-
 #container {
     display: flex;
     flex: 1;
     overflow: hidden;
 }
 
+#map-column {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
 #map {
     flex: 1;
+    min-height: 0;
+}
+
+#layer-dock {
+    background: var(--bg-alt);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    max-height: 34vh;
+}
+
+.dock-header {
+    background: var(--header-alt);
+    color: var(--text-invert);
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    gap: var(--space);
+    font-size: 13px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.dock-header .spacer {
+    flex: 1;
+}
+
+.dock-count {
+    font-size: 11px;
+    font-weight: normal;
+    opacity: 0.7;
+}
+
+.dock-add {
+    font-size: 12px;
+    min-width: 240px;
+    max-width: 420px;
+}
+
+.dock-msg {
+    font-size: 12px;
+    font-weight: normal;
+    opacity: 0.85;
+}
+
+.dock-error {
+    font-size: 12px;
+    font-weight: normal;
+    color: #ffb4ab;
+}
+
+.dock-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: var(--space);
+    overflow-y: auto;
+}
+
+.dock-empty {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 4px 2px;
+}
+
+.layer-card {
+    background: var(--bg);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    padding: 6px var(--space);
+}
+
+.layer-card-top {
+    display: flex;
+    align-items: center;
+    gap: var(--space);
+}
+
+.layer-name {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.layer-remove {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1;
+    padding: 1px 7px;
+}
+
+.layer-remove:hover:not(:disabled) {
+    background: var(--danger-bg);
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.layer-card-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 5px;
+}
+
+.control {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.control-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.control select,
+.control input[type=text] {
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.control .viewparams {
+    width: 240px;
+}
+
+.control .dim-select {
+    max-width: 210px;
 }
 
 #sidebar {

@@ -16,6 +16,7 @@ function preview() {
         workspaces: [],
         workspaceId: "",
         layers: [],
+        addLayerId: "",
         loading: true,
         error: "",
         queryOn: false,
@@ -51,8 +52,9 @@ function preview() {
 
             map.on("click", event => this.queryFeatures(event));
 
-            // The toolbar height changes after the layers load, so recheck the size.
-            requestAnimationFrame(() => map.invalidateSize());
+            // The layer dock grows and shrinks with the active layers, so the map box
+            // changes without a window resize. Leaflet only rechecks its size when told.
+            new ResizeObserver(() => map.invalidateSize()).observe(map.getContainer());
         },
 
         async loadWorkspaces() {
@@ -90,8 +92,34 @@ function preview() {
             return this.layers.filter(layer => layer.visible);
         },
 
+        get inactiveLayers() {
+            return this.layers.filter(layer => !layer.visible);
+        },
+
         get legends() {
             return this.visibleLayers.filter(layer => layer.legendUrl);
+        },
+
+        /// Put the layer picked in the dock select on the map. The select goes back to
+        /// its placeholder, and the layer drops out of its options.
+        addLayer() {
+            const layer = this.layers.find(item => item.id === this.addLayerId);
+
+            this.addLayerId = "";
+
+            if (!layer) {
+                return;
+            }
+
+            layer.visible = true;
+            this.syncLayer(layer);
+        },
+
+        /// Take the layer off the map. Its style, viewparams and dimensions stay on the
+        /// layer object, so a second add gets the same settings back.
+        removeLayer(layer) {
+            layer.visible = false;
+            this.syncLayer(layer);
         },
 
         async selectWorkspace() {
@@ -107,6 +135,7 @@ function preview() {
         async loadLayers() {
             this.removeAllTiles();
             this.layers = [];
+            this.addLayerId = "";
             this.loading = true;
             this.error = "";
 
@@ -123,7 +152,7 @@ function preview() {
                     ),
                 }));
 
-                for (const layer of this.layers) {
+                for (const layer of this.visibleLayers) {
                     this.syncLayer(layer);
                 }
 

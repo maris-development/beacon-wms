@@ -17,81 +17,116 @@
 <body x-data="preview">
 
     <div id="toolbar">
-        <div class="toolbar-top">
-            <h1 x-text="title">Beacon WMS</h1>
+        <h1 x-text="title">Beacon WMS</h1>
 
-            <label>
-                Workspace
-                <select x-model="workspaceId" @change="selectWorkspace()">
-                    <template x-for="workspace in workspaces" :key="workspace.id">
-                        <option :value="workspace.id" x-text="workspace.name || workspace.id"></option>
-                    </template>
-                </select>
-            </label>
+        <label>
+            Workspace
+            <select x-model="workspaceId" @change="selectWorkspace()">
+                <template x-for="workspace in workspaces" :key="workspace.id">
+                    <option :value="workspace.id" x-text="workspace.name || workspace.id"></option>
+                </template>
+            </select>
+        </label>
 
-            <span class="workspace-desc" x-text="workspace?.description"></span>
+        <span class="workspace-desc" x-text="workspace?.description"></span>
 
-            <label title="Click on the map to query features at that location">
-                <input type="checkbox" x-model="queryOn" @change="toggleQuery()">
-                Query features on click
-            </label>
+        <label title="Click on the map to query features at that location">
+            <input type="checkbox" x-model="queryOn" @change="toggleQuery()">
+            Query features on click
+        </label>
 
-            <span class="spacer"></span>
+        <span class="spacer"></span>
 
-            <a :href="`${workspace?.wmsUrl}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities`"
-                target="_blank">GetCapabilities</a>
-            <a href="./admin">Admin</a>
-        </div>
-
-        <div id="layer-controls">
-            <span class="toolbar-msg" x-show="loading">Reading GetCapabilities...</span>
-            <span class="toolbar-error" x-show="error" x-text="error"></span>
-
-            <template x-for="layer in layers" :key="layer.id">
-                <div class="layer-control">
-                    <input type="checkbox" :id="`toggle-${layer.id}`" x-model="layer.visible"
-                        @change="syncLayer(layer)">
-
-                    <label :for="`toggle-${layer.id}`" x-text="layer.title"></label>
-
-                    <select x-model="layer.style" @change="syncLayer(layer)" title="Style">
-                        <option value="">default</option>
-                        <template x-for="style in layer.styles" :key="style">
-                            <option :value="style" x-text="style"></option>
-                        </template>
-                    </select>
-
-                    <input type="text" x-model="layer.viewparams" @input="delayedSync(layer)"
-                        @change="syncLayer(layer)" placeholder="viewparams  e.g. year:2021;depth:0,10"
-                        title="VIEWPARAMS, key:value pairs separated by ;">
-
-                    <template x-for="dimension in layer.dimensions" :key="dimension.name">
-                        <span class="dim-group">
-                            <span class="dim-label" x-text="dimension.label"></span>
-
-                            <template x-if="dimension.discrete">
-                                <select class="dim-select" x-model="layer.dims[dimension.name]"
-                                    @change="syncLayer(layer)" :title="dimension.name">
-                                    <template x-for="value in dimension.values" :key="value">
-                                        <option :value="value" x-text="value"></option>
-                                    </template>
-                                </select>
-                            </template>
-
-                            <template x-if="!dimension.discrete">
-                                <input type="text" class="dim-select" x-model="layer.dims[dimension.name]"
-                                    @input="delayedSync(layer)" @change="syncLayer(layer)"
-                                    :placeholder="dimension.default" :title="dimension.name">
-                            </template>
-                        </span>
-                    </template>
-                </div>
-            </template>
-        </div>
+        <a :href="`${workspace?.wmsUrl}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities`"
+            target="_blank">GetCapabilities</a>
+        <a href="./admin">Admin</a>
     </div>
 
     <div id="container">
-        <div id="map"></div>
+        <div id="map-column">
+            <div id="map"></div>
+
+            <div id="layer-dock">
+                <div class="dock-header">
+                    <span>Layers</span>
+                    <span class="dock-count" x-text="`(${visibleLayers.length})`"></span>
+
+                    <select class="dock-add" x-model="addLayerId" @change="addLayer()"
+                        :disabled="inactiveLayers.length === 0" title="Add a layer to the map">
+                        <option value="" disabled>Add layer...</option>
+                        <template x-for="layer in inactiveLayers" :key="layer.id">
+                            <option :value="layer.id" x-text="layer.title"></option>
+                        </template>
+                    </select>
+
+                    <span class="spacer"></span>
+
+                    <span class="dock-msg" x-show="loading">Reading GetCapabilities...</span>
+                    <span class="dock-error" x-show="error" x-text="error"></span>
+                </div>
+
+                <div class="dock-body">
+                    <p class="dock-empty" x-show="!loading && !error && visibleLayers.length === 0">
+                        Select a layer to draw it on the map.
+                    </p>
+
+                    <template x-for="layer in visibleLayers" :key="layer.id">
+                        <div class="layer-card">
+                            <div class="layer-card-top">
+                                <span class="layer-name" x-text="layer.title" :title="layer.id"></span>
+
+                                <button class="layer-remove" @click="removeLayer(layer)"
+                                    title="Remove this layer from the map">&times;</button>
+                            </div>
+
+                            <div class="layer-card-controls">
+                                <label class="control">
+                                    <span class="control-label">Style</span>
+
+                                    <select x-model="layer.style" @change="syncLayer(layer)">
+                                        <option value="">default</option>
+                                        <template x-for="style in layer.styles" :key="style">
+                                            <option :value="style" x-text="style"></option>
+                                        </template>
+                                    </select>
+                                </label>
+
+                                <label class="control">
+                                    <span class="control-label">Viewparams</span>
+
+                                    <input type="text" class="viewparams" x-model="layer.viewparams"
+                                        @input="delayedSync(layer)" @change="syncLayer(layer)"
+                                        placeholder="e.g. year:2021;depth:0,10"
+                                        title="VIEWPARAMS, key:value pairs separated by ;">
+                                </label>
+
+                                <template x-for="dimension in layer.dimensions" :key="dimension.name">
+                                    <label class="control">
+                                        <span class="control-label" x-text="dimension.label"></span>
+
+                                        <template x-if="dimension.discrete">
+                                            <select class="dim-select" x-model="layer.dims[dimension.name]"
+                                                @change="syncLayer(layer)" :title="dimension.name">
+                                                <template x-for="value in dimension.values" :key="value">
+                                                    <option :value="value" x-text="value"></option>
+                                                </template>
+                                            </select>
+                                        </template>
+
+                                        <template x-if="!dimension.discrete">
+                                            <input type="text" class="dim-select"
+                                                x-model="layer.dims[dimension.name]" @input="delayedSync(layer)"
+                                                @change="syncLayer(layer)" :placeholder="dimension.default"
+                                                :title="dimension.name">
+                                        </template>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
 
         <div id="sidebar">
             <div class="sidebar-header">

@@ -80,6 +80,10 @@ Leaflet objects live in module scope in
 its data in proxies, and a proxied layer no longer matches the instance Leaflet holds,
 so `map.removeLayer` fails.
 
+The layer dock below the map grows and shrinks with the active layers, so the map box
+changes without a window resize. A `ResizeObserver` on the map container calls
+`map.invalidateSize()`. Without it Leaflet keeps the old size and draws too few tiles.
+
 ## 4. Internal routes (rust-backend)
 
 | Route | Purpose |

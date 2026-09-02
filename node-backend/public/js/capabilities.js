@@ -190,7 +190,7 @@ function readDimensions(layerEl) {
 
         dimensions.push({
             name,
-            label: name === "ELEVATION" ? "Elev:" : "Time:",
+            label: name === "ELEVATION" ? "Elevation" : "Time",
             default: dimEl.getAttribute("default") || "",
             values,
             discrete: isDiscrete(name, values),
