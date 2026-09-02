@@ -34,6 +34,69 @@ export class AdminService {
         return true;
     }
 
+    /// Report the datasets that wait for a refresh.
+    queue(req: Request, res: Response) {
+        if (!this.authorize(req, res)) {
+            return;
+        }
+
+        this.proxyGet("/queue", res);
+    }
+
+    /// Refresh one queued dataset. The request stays open until the query ends.
+    update(req: Request, res: Response) {
+        if (!this.authorize(req, res)) {
+            return;
+        }
+
+        this.proxyGet("/update", res);
+    }
+
+    private authorize(req: Request, res: Response): boolean {
+        try {
+            this.checkSecret(req);
+        } catch (err) {
+            logger.info(`Unauthorized attempt to reach ${req.path}`, err);
+            res.status(401).send("Unauthorized");
+            return false;
+        }
+
+        return true;
+    }
+
+    /// Forward a GET to the rust backend.
+    ///
+    /// It uses http.request, not fetch, because fetch drops the connection after
+    /// 5 minutes and a dataset query can take longer.
+    private proxyGet(path: string, res: Response) {
+        const url = new URL(path, BeaconWmsService.getBaseUrl());
+
+        const proxyRequest = request(url, { method: "GET" }, (proxyResponse) => {
+            res.status(proxyResponse.statusCode || 502);
+            res.setHeader(
+                "Content-Type",
+                proxyResponse.headers["content-type"] || "application/json"
+            );
+            proxyResponse.pipe(res);
+        });
+
+        proxyRequest.on("error", (err) => {
+            logger.error(`Error calling ${url.href}:`, err);
+
+            if (res.headersSent) {
+                res.end();
+                return;
+            }
+
+            res.status(502).json({
+                error: "The rust backend did not answer",
+                message: err.message,
+            });
+        });
+
+        proxyRequest.end();
+    }
+
     clearLayers(req: Request, res: Response) {
 
         try {

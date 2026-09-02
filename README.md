@@ -87,6 +87,38 @@ for a refresh.
 Only a missing layer file makes a request wait for a Beacon query. Other requests
 for the same layer wait for that one query.
 
+### Manual Refresh
+
+Two admin endpoints control the queue by hand. Both need
+`Authorization: Bearer $ADMIN_SECRET`.
+
+`GET /admin/queue` reports the queued layers and the layers that run now.
+
+```bash
+curl -H "Authorization: Bearer $ADMIN_SECRET" http://localhost:3000/admin/queue
+```
+
+`GET /admin/update` refreshes one queued layer. The request stays open until the
+Beacon query ends, so it can take minutes. Call it again while `queued_count` in
+the answer is above zero.
+
+```bash
+curl -H "Authorization: Bearer $ADMIN_SECRET" http://localhost:3000/admin/update
+```
+
+The `status` field holds one of these values.
+
+| Status | HTTP | Meaning |
+| --- | --- | --- |
+| `updated` | 200 | The layer has new data. |
+| `skipped` | 200 | The worker refreshed the layer already. |
+| `empty` | 200 | The queue is empty. There is no work. |
+| `busy` | 409 | Another manual update still runs. |
+| `failed` | 502 | The query failed. The old file stays. |
+
+A manual update takes only layers that are in the queue. To queue a layer, request
+it once after `DATASET_TTL_SECONDS` passed.
+
 ## Node Backend Environment Variables
 
 | Variable | Default | Used for |

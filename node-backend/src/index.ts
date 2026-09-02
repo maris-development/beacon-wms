@@ -27,6 +27,8 @@ app.get(routes.root.getRoute(), homepage);
 app.get(routes.defaultWms.getRoute(), defaultWms);
 app.get(routes.workspaceWms.getRoute(), workspaceWms);
 app.get(routes.clearLayers.getRoute(), clearLayers);
+app.get(routes.refreshQueue.getRoute(), refreshQueue);
+app.get(routes.refreshUpdate.getRoute(), refreshUpdate);
 
 const server = app.listen(http_port, http_address, () => {
   logger.info(`Node backend listening at http://${http_address}:${http_port}`);
@@ -78,6 +80,14 @@ function workspaceWms(req: Request, res: Response){
 
 function clearLayers(req: Request, res: Response){
     adminService.clearLayers(req, res);
+}
+
+function refreshQueue(req: Request, res: Response){
+    adminService.queue(req, res);
+}
+
+function refreshUpdate(req: Request, res: Response){
+    adminService.update(req, res);
 }
 
 function appMiddleware(req: Request, res: Response, next: NextFunction) {

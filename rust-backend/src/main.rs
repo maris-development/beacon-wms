@@ -82,6 +82,8 @@ fn main() {
                 .route("/get-map", get(get_map))
                 .route("/get-feature-info", get(get_feature_info))
                 .route("/clear-layers", get(clear_layers))
+                .route("/queue", get(queue))
+                .route("/update", get(update))
                 .route("/available-styles", get(available_styles))
                 .route("/get-legend-graphic", get(get_legend_graphic))
                 .layer(middleware::from_fn(log_middleware));
@@ -701,6 +703,51 @@ async fn clear_layers() -> impl IntoResponse {
         StatusCode::OK,
         format!("Layer data cleared: {:?}", all_parquet_files),
     )
+}
+
+/// Report the datasets that wait for a refresh, and the ones that run now.
+async fn queue() -> impl IntoResponse {
+    json_response(StatusCode::OK, &refresh::queue_status().await)
+}
+
+/// Refresh one queued dataset and wait for the result.
+///
+/// The request stays open for the whole Beacon query, so it can take minutes. Call
+/// it again while `queued_count` in the response is above zero.
+async fn update() -> impl IntoResponse {
+    let result = refresh::run_next_job(&DATASET_MAP).await;
+
+    let status = match result.status {
+        "failed" => StatusCode::BAD_GATEWAY,
+        "busy" => StatusCode::CONFLICT,
+        _ => StatusCode::OK,
+    };
+
+    json_response(status, &result)
+}
+
+fn json_response<T: serde::Serialize>(
+    status: StatusCode,
+    body: &T,
+) -> Response<axum::body::Body> {
+    let json = match serde_json::to_string(body) {
+        Ok(json) => json,
+        Err(e) => {
+            log::error!("Error serializing response: {:?}", e);
+
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Error serializing response",
+            )
+                .into_response();
+        }
+    };
+
+    let mut headers = HeaderMap::new();
+
+    headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+
+    (status, headers, json).into_response()
 }
 
 

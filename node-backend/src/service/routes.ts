@@ -25,6 +25,8 @@ export class Route {
 export const routes = {
     root: new Route(`${path_prefix}/`),
     clearLayers: new Route(`${path_prefix}/admin/clear-layers`),
+    refreshQueue: new Route(`${path_prefix}/admin/queue`),
+    refreshUpdate: new Route(`${path_prefix}/admin/update`),
     defaultWms: new Route(`${path_prefix}/wms`),
     workspaceWms: new Route(`${path_prefix}/workspaces/:workspaceId/wms`),
 };

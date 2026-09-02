@@ -47,6 +47,8 @@ Defined in [routes.ts](node-backend/src/service/routes.ts). `PATH_PREFIX` goes b
 | `/wms` | WMS endpoint of the default workspace. |
 | `/workspaces/:workspaceId/wms` | WMS endpoint of one workspace. |
 | `/admin/clear-layers` | Deletes the cached parquet layers. Needs `Authorization: Bearer $ADMIN_SECRET`. |
+| `/admin/queue` | Reports the refresh queue. Needs the same bearer token. |
+| `/admin/update` | Refreshes one queued layer and waits for it. Needs the same bearer token. |
 
 The WMS endpoint supports `GetCapabilities`, `GetMap`, `GetFeatureInfo` and `GetLegendGraphic`.
 WMS versions `1.3.0` and `1.1.1` are accepted.
@@ -61,6 +63,8 @@ WMS versions `1.3.0` and `1.1.1` are accepted.
 | `/get-legend-graphic` | Draws a vertical color bar. |
 | `/available-styles` | Lists the colormaps. Used by `GetCapabilities`. |
 | `/clear-layers` | Deletes all parquet files in `LAYER_DIR`. |
+| `/queue` | Reports the refresh queue as JSON. |
+| `/update` | Refreshes one queued layer. Blocks until the query ends. |
 
 ## 5. Configuration
 
@@ -127,6 +131,13 @@ worker starts in `main` and runs every `REFRESH_INTERVAL_SECONDS`. It queries th
 datalake for the queued layers, `REFRESH_CONCURRENCY` at a time. Each query writes
 a temporary file and then renames it, so a reader never sees a part of the new
 file. A failed query keeps the old file.
+
+`/admin/update` takes one job from the same queue and waits for the query. A
+`MANUAL_UPDATE_LOCK` keeps manual updates to one at a time. A layer that is not in
+the queue cannot be updated by hand, so request it once after the TTL passed.
+
+The node proxy for `/admin/update` uses `http.request`, not `fetch`. The undici
+`fetch` in Node 20 drops the connection after 5 minutes and a query can take longer.
 
 `DATASET_MAP` in [main.rs](rust-backend/src/main.rs) holds a lock and a generation
 per layer file path. See [queries.rs](rust-backend/src/queries.rs).
