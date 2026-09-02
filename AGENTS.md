@@ -177,6 +177,25 @@ per layer file path. See [queries.rs](rust-backend/src/queries.rs).
 The tile cache has no such key. A refreshed layer keeps its old PNG tiles until
 you delete the tile cache directory.
 
+### Threading model
+
+The rust backend keeps two thread groups apart. Do not mix them.
+
+- **Async workers** (`WORKERS`) run the protocol, the config read and all network and
+  file I/O. They must never run CPU work. Tokio cannot preempt a blocked worker, so
+  one long draw call stops every other request on that thread.
+- **Blocking pool** (`max_blocking_threads`) runs the synchronous parquet, reprojection,
+  draw and PNG work. `render_png` and `query_features` in
+  [main.rs](rust-backend/src/main.rs) are the only entry points.
+
+`MAP_RENDER_SLOTS` is a semaphore with `MAP_WORKERS` permits. GetMap takes a permit
+around the render call. GetFeatureInfo takes no permit, so a burst of GetMap requests
+cannot delay it.
+
+Resolve the dataset file with `queries::get_dataset_file` **before** you take a permit.
+That call can wait minutes for a datalake query. A pool thread must never hold a permit
+while it waits for the network.
+
 ## 7. How to run
 
 Docker (both backends):
@@ -212,6 +231,8 @@ The [README.md](README.md) holds the full table. The important ones:
 - `DATASET_TTL_SECONDS` — age at which a layer file needs a refresh. Default is `86400`.
 - `REFRESH_INTERVAL_SECONDS` — run interval of the refresh worker. Default is `1800`.
 - `REFRESH_CONCURRENCY` — parallel refresh queries. Default is `1`.
+- `WORKERS` — async worker threads of the rust backend. Default is `4`.
+- `MAP_WORKERS` — parallel map renders. Default is the CPU count. See section 6.
 
 **Never commit `.env` and never print its content.** It holds a live token and the admin secret.
 

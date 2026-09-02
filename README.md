@@ -103,7 +103,8 @@ npm run dev
 | --- | --- | --- |
 | `HTTP_ADDRESS` | `0.0.0.0` | Rust backend bind address. |
 | `HTTP_PORT` | `8000` | Rust backend HTTP port. |
-| `WORKERS` | `12` | Number of Tokio worker threads. |
+| `WORKERS` | `4` | Number of Tokio async worker threads. They run protocol and I/O work only. |
+| `MAP_WORKERS` | _(CPU cores)_ | Number of GetMap renders that run at the same time. |
 | `LOG_DIR` | `../logs` | Directory for backend logs. |
 | `LOG_LEVEL` | `INFO` | Log verbosity (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`). |
 | `CONFIG_DIR` | `../config` | Base directory for config files like `config.json` and `colormaps.json`. |

@@ -6,13 +6,14 @@ use axum::{
     routing::get,
     Router,
 };
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fs, fs::File};
 use serde_json::Value;
 use tokio::runtime::Builder;
 use tokio::io::AsyncReadExt;
+use tokio::sync::Semaphore;
 
 use crate::{
-    boundingbox::BoundingBox, color_maps::ColorMapsConfig, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, queries::DatasetMap, query_parameters::{GetFeatureInfoRequestParameters, GetLegendGraphicRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling, tile_cache::TileCache
+    boundingbox::BoundingBox, color_maps::{ColorMap, ColorMapsConfig}, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, queries::DatasetMap, query_parameters::{GetFeatureInfoRequestParameters, GetLegendGraphicRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling, tile_cache::TileCache
 };
 
 pub mod tile_cache;
@@ -50,6 +51,31 @@ lazy_static! {
         let enabled = misc::get_env_var("TILE_CACHE_ENABLED", Some("false"));
         matches!(enabled.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
     };
+
+    /// Number of map renders that run at the same time. Defaults to the CPU count.
+    pub static ref MAP_WORKERS: usize = {
+        let cores = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4);
+
+        // Docker Compose passes an empty string for a variable that has no value.
+        let value = misc::get_env_var("MAP_WORKERS", None);
+        let value = value.trim();
+
+        match value.parse::<usize>() {
+            Ok(n) if n > 0 => n,
+            _ => {
+                if !value.is_empty() {
+                    log::warn!("Invalid MAP_WORKERS '{}'. Using {}.", value, cores);
+                }
+
+                cores
+            }
+        }
+    };
+
+    /// Render slots for GetMap. Other routes take no slot, so GetMap cannot starve them.
+    pub static ref MAP_RENDER_SLOTS: Semaphore = Semaphore::new(*MAP_WORKERS);
 }
 
 
@@ -61,17 +87,26 @@ fn main() {
     let port: u16 = misc::get_env_var("HTTP_PORT", Some("8000"))
         .parse()
         .expect("Invalid port number (must be u16)");
-    let workers: usize = misc::get_env_var("WORKERS", Some("12"))
+    let workers: usize = misc::get_env_var("WORKERS", Some("4"))
         .parse()
         .expect("Invalid number of workers (must be usize)");
 
+    // The async workers only run protocol and I/O work. Drawing goes to the blocking
+    // pool. The extra blocking threads serve feature info and tokio::fs.
     Builder::new_multi_thread()
         .worker_threads(workers)
+        .max_blocking_threads(*MAP_WORKERS + 16)
         .enable_all()
         .build()
         .unwrap()
         .block_on(async move {
-            log::info!("Starting server on http://{}:{}", address, port);
+            log::info!(
+                "Starting server on http://{}:{} with {} async workers and {} map workers",
+                address,
+                port,
+                workers,
+                *MAP_WORKERS
+            );
 
             // Refresh stale datasets in the background, so requests never wait for it
             tokio::spawn(refresh::run_scheduler(DATASET_MAP.clone()));
@@ -296,7 +331,7 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
 
     profiling.mark("query parsed");
 
-    let mut image: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> = image_utils::create_rgba_image(get_map_params.width, get_map_params.height);
+    let mut draw_jobs: Vec<LayerDrawJob> = Vec::with_capacity(layers_configs.len());
 
     let layers_styles_wms_iter = layers_configs
         .iter()
@@ -354,74 +389,134 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
         };
 
         let icon_shape = match &layer_config.config.shape {
-            Some(shape) => shape.as_str(),
-            None => "circle",
-        }; 
+            Some(shape) => shape.clone(),
+            None => String::from("circle"),
+        };
 
-        let drawing_result = map_drawing::get_map(
-            &mut image,
-            bounding_box.clone(),
-            color_map, 
-            &get_map_params.crs,
-            layer_filepath,
+        draw_jobs.push(LayerDrawJob {
+            filepath: layer_filepath,
             file,
             generation,
-            icon_shape,
-            &mut profiling,
-        );
+            color_map,
+            shape: icon_shape,
+            wms_layer: wms_layer.clone(),
+        });
+    }
 
-        if drawing_result.is_err() {
-            let e = drawing_result.err().unwrap();
-            log::error!("Error drawing map: {:?}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Error drawing map: {:?}", e),
-            )
-                .into_response();
-        } else {
-            // log::info!("Successfully drew layer from file: {}", layer_filepath);
-            profiling.mark(&format!("drawn {}", wms_layer));
+    // The dataset files are ready. Take a render slot only for the draw work itself.
+    let permit = match MAP_RENDER_SLOTS.acquire().await {
+        Ok(permit) => permit,
+        Err(e) => {
+            log::error!("Render slots closed: {}", e);
+            return (StatusCode::SERVICE_UNAVAILABLE, "Server shutting down").into_response();
+        }
+    };
+
+    profiling.mark("render slot acquired");
+
+    let bbox = bounding_box;
+    let crs = get_map_params.crs.clone();
+    let width = get_map_params.width;
+    let height = get_map_params.height;
+
+    let render_result = tokio::task::spawn_blocking(move || {
+        render_png(draw_jobs, bbox, crs, width, height, profiling)
+    })
+    .await;
+
+    drop(permit);
+
+    let png_data = match render_result {
+        Ok(Ok(png_data)) => png_data,
+        Ok(Err(e)) => {
+            log::error!("{}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+        }
+        Err(e) => {
+            log::error!("Render task failed: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Render task failed").into_response();
+        }
+    };
+
+    if *TILE_CACHE_ENABLED {
+        if let Some(extension) = cache_extension {
+            if let Err(e) = TILE_CACHE.cache_tile(&get_map_params, &png_data, extension).await {
+                log::warn!("Failed to write tile cache: {}", e);
+            }
         }
     }
 
-    // profiling.mark(&format!("applying shadow"));
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "image/png")
+        .header("Content-Length", png_data.len().to_string())
+        .header("X-Cache-Hit", "false")
+        .body(axum::body::Body::from(png_data))
+        .unwrap()
+}
+
+/// One layer that is ready to draw. The async part resolves it, the blocking pool draws it.
+struct LayerDrawJob {
+    filepath: String,
+    file: File,
+    generation: u64,
+    color_map: ColorMap,
+    shape: String,
+    wms_layer: String,
+}
+
+/// Draw every layer on one image and encode the PNG.
+///
+/// This function is synchronous and CPU bound. Run it on the blocking pool, never on
+/// an async worker thread. All dataset files are open before the call, so the function
+/// never waits for the network.
+fn render_png(
+    jobs: Vec<LayerDrawJob>,
+    bounding_box: BoundingBox,
+    crs: String,
+    width: u32,
+    height: u32,
+    mut profiling: RequestProfiling,
+) -> Result<Vec<u8>, String> {
+    let mut image: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> =
+        image_utils::create_rgba_image(width, height);
+
+    for job in jobs {
+        let LayerDrawJob {
+            filepath,
+            file,
+            generation,
+            color_map,
+            shape,
+            wms_layer,
+        } = job;
+
+        map_drawing::get_map(
+            &mut image,
+            bounding_box.clone(),
+            color_map,
+            &crs,
+            filepath,
+            file,
+            generation,
+            &shape,
+            &mut profiling,
+        )
+        .map_err(|e| format!("Error drawing map: {:?}", e))?;
+
+        profiling.mark(&format!("drawn {}", wms_layer));
+    }
 
     let mut png_data: Vec<u8> = Vec::new();
-    let output_buffer = image_utils::rgba_image_to_png(&image, &mut png_data);
 
-    profiling.mark(&format!("image encoded"));
+    image_utils::rgba_image_to_png(&image, &mut png_data)
+        .map_err(|e| format!("Error encoding PNG: {:?}", e))?;
+
+    profiling.mark("image encoded");
 
     // profiling.log_report(); // --> get profiling report in logs
 
-    match output_buffer {
-        Ok(_) => {
-            if *TILE_CACHE_ENABLED {
-                if let Some(extension) = cache_extension {
-                    if let Err(e) = TILE_CACHE.cache_tile(&get_map_params, &png_data, extension).await {
-                        log::warn!("Failed to write tile cache: {}", e);
-                    }
-                }
-            }
-
-            let response = Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "image/png")
-                .header("Content-Length", png_data.len().to_string())
-                .header("X-Cache-Hit", "false")
-                .body(axum::body::Body::from(png_data))
-                .unwrap();
-
-            response
-        }
-        Err(e) => {
-            log::error!("Error encoding PNG: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Error encoding PNG: {:?}", e),
-            )
-                .into_response()
-        }
-    }
+    Ok(png_data)
 }
 
 async fn get_feature_info(
@@ -572,7 +667,7 @@ async fn get_feature_info(
         }
     }
 
-    let mut feature_info_results: Vec<Feature> = Vec::new();
+    let mut query_jobs: Vec<FeatureInfoJob> = Vec::with_capacity(layers_configs.len());
 
     for layer_config in layers_configs.iter() {
 
@@ -609,29 +704,41 @@ async fn get_feature_info(
             Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
         };
 
-        let result = map_querying::get_feature_info(
+        query_jobs.push(FeatureInfoJob {
+            filepath: layer_filepath,
+            file,
+        });
+    }
+
+    let bbox = bounding_box;
+    let crs = get_feature_info_params.crs.clone();
+
+    // The parquet hit test is synchronous. It takes no render slot, so a burst of
+    // GetMap requests cannot delay it.
+    let query_result = tokio::task::spawn_blocking(move || {
+        query_features(
+            query_jobs,
             image_dimensions,
             click_coordinates,
-            bounding_box.clone(),
-            get_feature_info_params.crs.as_str(),
+            bbox,
+            crs,
             feature_count,
-            &layer_filepath,
-            file
-        );
+        )
+    })
+    .await;
 
-        if result.is_err() {
-            let e = result.err().unwrap();
-            log::error!("Error getting feature info: {:?}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Error getting feature info: {:?}", e),
-            )
-                .into_response();
-        } else {
-            let mut features = result.ok().unwrap();
-            feature_info_results.append(&mut features);
+    let feature_info_results = match query_result {
+        Ok(Ok(features)) => features,
+        Ok(Err(e)) => {
+            log::error!("{}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
         }
-    }
+        Err(e) => {
+            log::error!("Feature info task failed: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Feature info task failed")
+                .into_response();
+        }
+    };
 
     // let mut feature_collection_properties: serde_json::map::Map<String, serde_json::Value> =
     //     serde_json::map::Map::new();
@@ -684,6 +791,43 @@ async fn get_feature_info(
                 .into_response()
         }
     }
+}
+
+/// One layer that is ready for the hit test.
+struct FeatureInfoJob {
+    filepath: String,
+    file: File,
+}
+
+/// Run the hit test on every layer and collect the features.
+///
+/// This function is synchronous. It reads parquet, so it runs on the blocking pool.
+fn query_features(
+    jobs: Vec<FeatureInfoJob>,
+    image_dimensions: (u32, u32),
+    click_coordinates: (u32, u32),
+    bounding_box: BoundingBox,
+    crs: String,
+    feature_count: u32,
+) -> Result<Vec<Feature>, String> {
+    let mut results: Vec<Feature> = Vec::new();
+
+    for job in jobs {
+        let mut features = map_querying::get_feature_info(
+            image_dimensions,
+            click_coordinates,
+            bounding_box.clone(),
+            &crs,
+            feature_count,
+            &job.filepath,
+            job.file,
+        )
+        .map_err(|e| format!("Error getting feature info: {:?}", e))?;
+
+        results.append(&mut features);
+    }
+
+    Ok(results)
 }
 
 async fn clear_layers() -> impl IntoResponse {
