@@ -7,6 +7,9 @@ import { request } from "http";
 import { WMSGetFeatureInfoParameters, WMSGetLegendGraphicParameters, WMSGetMapParameters } from "../types/ogc-wms";
 import logger from "./logger";
 
+// Answer of the Rust backend. A null body means the tile did not change.
+type TileFetchResult = { buf: ArrayBuffer | null; headers: Headers };
+
 export class BeaconWmsService {
     private wmsXml: WmsXmlService;
     private beaconWmsBaseUrl = 'http://localhost:8000'; // Default Rust service base URL
@@ -17,15 +20,73 @@ export class BeaconWmsService {
     public static CORS_HEADERS = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, If-None-Match, If-Modified-Since",
         "Access-Control-Max-Age": "86400", // Cache preflight response for 24 hours
-        "Access-Control-Expose-Headers": "X-Cache-Hit"
+        "Access-Control-Expose-Headers": "X-Cache-Hit, ETag, Last-Modified"
     };
 
-    public static CACHE_HEADERS = {
-        "Cache-Control": `public, max-age=${86400 * 7}, stale-while-revalidate=3600`,
-        "Expires": new Date(Date.now() + (86400 * 1000 * 7)).toUTCString() // Explicit expiry: 1 week
-    };
+    // Default lifetime of a tile in a client cache, in seconds.
+    private static DEFAULT_CACHE_MAX_AGE = 3600;
+
+    /**
+     * Cache policy for a tile.
+     *
+     * A short max-age lets the client revalidate with its ETag. The stale directives
+     * keep the old tile visible while the revalidation runs.
+     */
+    public static cacheHeaders(): Record<string, string> {
+        return {
+            "Cache-Control": `public, max-age=${BeaconWmsService.getCacheMaxAge()}, stale-while-revalidate=86400, stale-if-error=86400`
+        };
+    }
+
+    private static getCacheMaxAge(): number {
+        const configured = Number(process.env.WMS_CACHE_MAX_AGE);
+
+        if (Number.isFinite(configured) && configured >= 0) {
+            return Math.floor(configured);
+        }
+
+        return BeaconWmsService.DEFAULT_CACHE_MAX_AGE;
+    }
+
+    /**
+     * Conditional headers of the client, for the request to the Rust backend.
+     *
+     * The backend answers 304 from these, without a tile read and without a render.
+     */
+    private static validationRequestHeaders(req: Request): Record<string, string> {
+        const headers: Record<string, string> = {};
+        const ifNoneMatch = req.headers["if-none-match"];
+        const ifModifiedSince = req.headers["if-modified-since"];
+
+        if (typeof ifNoneMatch === "string") {
+            headers["If-None-Match"] = ifNoneMatch;
+        }
+
+        if (typeof ifModifiedSince === "string") {
+            headers["If-Modified-Since"] = ifModifiedSince;
+        }
+
+        return headers;
+    }
+
+    // Validators of the Rust backend, for the answer to the client.
+    private static validationResponseHeaders(headers: Headers): Record<string, string> {
+        const result: Record<string, string> = {};
+        const etag = headers.get("ETag");
+        const lastModified = headers.get("Last-Modified");
+
+        if (etag) {
+            result["ETag"] = etag;
+        }
+
+        if (lastModified) {
+            result["Last-Modified"] = lastModified;
+        }
+
+        return result;
+    }
 
     constructor(
         private readonly config: Config
@@ -210,15 +271,33 @@ export class BeaconWmsService {
         if (wmsGetMapParams.elevation) url.searchParams.append("elevation", wmsGetMapParams.elevation);
         if (wmsGetMapParams.viewparams) url.searchParams.append("viewparams", wmsGetMapParams.viewparams);
 
-        
-        fetch(url)
+
+        fetch(url, { headers: BeaconWmsService.validationRequestHeaders(req) })
             .then(r => {
+                // The tile did not change. The Rust backend sends no body.
+                if (r.status === 304) {
+                    return Promise.resolve<TileFetchResult>({ buf: null, headers: r.headers });
+                }
                 if (r.ok) {
-                    return r.arrayBuffer().then(buf => ({ buf, headers: r.headers }));
+                    return r.arrayBuffer().then((buf): TileFetchResult => ({ buf, headers: r.headers }));
                 }
                 return Promise.reject(r);
             })
             .then(({ buf, headers }) => {
+                const validatorHeaders = BeaconWmsService.validationResponseHeaders(headers);
+
+                if (buf === null) {
+                    res.writeHead(304, {
+                        "X-Cache-Hit": headers.get("X-Cache-Hit") || "validated",
+                        ...validatorHeaders,
+                        ...BeaconWmsService.CORS_HEADERS,
+                        ...BeaconWmsService.cacheHeaders()
+                    });
+
+                    res.end();
+                    return;
+                }
+
                 const nodeBuf = Buffer.from(buf);
                 const contentType = headers.get("Content-Type") || "image/png";
                 const contentLength = headers.get("Content-Length") || nodeBuf.length.toString();
@@ -229,8 +308,9 @@ export class BeaconWmsService {
                     "Content-Type": contentType,
                     "Content-Length": contentLength,
                     "X-Cache-Hit": headers.get("X-Cache-Hit") || "false",
+                    ...validatorHeaders,
                     ...BeaconWmsService.CORS_HEADERS, 
-                    ...BeaconWmsService.CACHE_HEADERS
+                    ...BeaconWmsService.cacheHeaders()
                 });
                             
                 res.end(nodeBuf);

@@ -2,8 +2,6 @@ use std::path::PathBuf;
 
 use tokio::fs::File;
 
-use crate::query_parameters::GetMapRequestParameters;
-
 #[derive(Clone, Debug)]
 pub struct TileCache {
     tile_cache_directory: String
@@ -27,21 +25,19 @@ impl TileCache {
         dir
     }
 
-    pub async fn is_cached(&self, get_map_params: &GetMapRequestParameters, extension: &str) -> Option<File> {
-        let tile_hash = get_map_params.hash();
-        let tile_path = self.tile_path_for_hash(&tile_hash, extension);
+    pub async fn is_cached(&self, tile_hash: &str, extension: &str) -> Option<File> {
+        let tile_path = self.tile_path_for_hash(tile_hash, extension);
 
         File::open(tile_path).await.ok()
     }
 
     pub async fn cache_tile(
         &self,
-        get_map_params: &GetMapRequestParameters,
+        tile_hash: &str,
         tile_data: &[u8],
         extension: &str,
     ) -> std::io::Result<()> {
-        let tile_hash = get_map_params.hash();
-        let tile_path = self.tile_path_for_hash(&tile_hash, extension);
+        let tile_path = self.tile_path_for_hash(tile_hash, extension);
 
         if let Some(parent) = tile_path.parent() {
             tokio::fs::create_dir_all(parent).await?;

@@ -13,10 +13,11 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
 
 use crate::{
-    boundingbox::BoundingBox, color_maps::{ColorMap, ColorMapsConfig}, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, queries::DatasetMap, query_parameters::{GetFeatureInfoRequestParameters, GetLegendGraphicRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling, tile_cache::TileCache
+    boundingbox::BoundingBox, color_maps::{ColorMap, ColorMapsConfig}, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, queries::DatasetMap, query_parameters::{GetFeatureInfoRequestParameters, GetLegendGraphicRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling, tile_cache::TileCache, tile_validator::TileValidator
 };
 
 pub mod tile_cache;
+pub mod tile_validator;
 pub mod beacon_api;
 pub mod boundingbox;
 pub mod cache_engine;
@@ -144,27 +145,12 @@ async fn index() -> impl IntoResponse {
 // test query
 // http://localhost:3000/workspaces/default/wms?viewparams=year:2024;depth:[-10,-20];bbox[-90,-45,90,45]
 
-async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoResponse {
+async fn get_map(
+    headers: HeaderMap,
+    get_map_params: Query<GetMapRequestParameters>,
+) -> impl IntoResponse {
 
     let cache_extension = misc::get_map_image_extension(&get_map_params.format);
-
-    if *TILE_CACHE_ENABLED {
-        if let Some(extension) = cache_extension {
-            if let Some(mut cached_file) = TILE_CACHE.is_cached(&get_map_params, extension).await {
-                let mut cached_data: Vec<u8> = Vec::new();
-                if let Ok(_) = cached_file.read_to_end(&mut cached_data).await {
-                    log::debug!("Tile cache hit");
-                    return Response::builder()
-                        .status(StatusCode::OK)
-                        .header("Content-Type", "image/png")
-                        .header("Content-Length", cached_data.len().to_string())
-                        .header("X-Cache-Hit", "true")
-                        .body(axum::body::Body::from(cached_data))
-                        .unwrap();
-                }
-            }
-        }
-    }
 
     // log::info!("Get map request: {:?}", get_map_params);
 
@@ -331,15 +317,11 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
 
     profiling.mark("query parsed");
 
-    let mut draw_jobs: Vec<LayerDrawJob> = Vec::with_capacity(layers_configs.len());
+    // The path of a dataset file holds the layer and its viewparams. Resolve every
+    // path first, so the tile identity is known before any data read or render.
+    let mut layer_filepaths: Vec<String> = Vec::with_capacity(layers_configs.len());
 
-    let layers_styles_wms_iter = layers_configs
-        .iter()
-        .zip(styles_vec.iter())
-        .zip(wms_layers.iter());
-
-    for ((layer_config, style), wms_layer) in layers_styles_wms_iter {
-
+    for layer_config in layers_configs.iter() {
         // use the assigned viewparams to create a hash for the filename, so we can store different versions of the same layer with different viewparams
         let viewparams_hash = layer_config
             .config
@@ -347,23 +329,67 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
             .as_ref()
             .map(|vp| misc::hash_viewparams(vp));
 
-        let viewparams_hash = viewparams_hash.as_deref();
-
-        let layer_filepath = match misc::get_layer_filepath(&workspace.id, &layer_config.id, viewparams_hash) {
-            Ok(path) => path,
+        let layer_filepath = match misc::get_layer_filepath(
+            &workspace.id,
+            &layer_config.id,
+            viewparams_hash.as_deref(),
+        ) {
+            Ok(path) if !path.is_empty() => path,
+            Ok(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid layer file path: cannot convert to string".to_string(),
+                )
+                    .into_response();
+            }
             Err(e) => {
                 log::error!("Error getting layer filepath: {:?}", e);
-                String::new() // Return empty string on error, will be filtered out later
+
+                return (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid layer file path: cannot convert to string".to_string(),
+                )
+                    .into_response();
             }
         };
 
-        // if empty (invalid string) return an error
-        if layer_filepath.is_empty() {
-            return (
-                StatusCode::BAD_REQUEST,
-                "Invalid layer file path: cannot convert to string".to_string(),
-            ).into_response();
+        layer_filepaths.push(layer_filepath);
+    }
+
+    let validator = TileValidator::build(&get_map_params, &layer_filepaths);
+
+    // The client holds this tile. Answer it without a cache read and without a render.
+    if validator.is_fresh_for(&headers) {
+        log::debug!("Tile not modified");
+
+        return not_modified_response(&validator);
+    }
+
+    if *TILE_CACHE_ENABLED {
+        if let Some(extension) = cache_extension {
+            if let Some(mut cached_file) =
+                TILE_CACHE.is_cached(validator.cache_key(), extension).await
+            {
+                let mut cached_data: Vec<u8> = Vec::new();
+
+                if cached_file.read_to_end(&mut cached_data).await.is_ok() {
+                    log::debug!("Tile cache hit");
+
+                    return tile_response(cached_data, &validator, true);
+                }
+            }
         }
+    }
+
+    let mut draw_jobs: Vec<LayerDrawJob> = Vec::with_capacity(layers_configs.len());
+
+    let layers_styles_wms_iter = layers_configs
+        .iter()
+        .zip(styles_vec.iter())
+        .zip(wms_layers.iter())
+        .zip(layer_filepaths.iter());
+
+    for (((layer_config, style), wms_layer), layer_filepath) in layers_styles_wms_iter {
 
         let (file, generation) = match queries::get_dataset_file(&DATASET_MAP, layer_filepath.clone(), layer_config.clone()).await{
             Ok(f) => f,
@@ -394,7 +420,7 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
         };
 
         draw_jobs.push(LayerDrawJob {
-            filepath: layer_filepath,
+            filepath: layer_filepath.clone(),
             file,
             generation,
             color_map,
@@ -440,18 +466,45 @@ async fn get_map(get_map_params: Query<GetMapRequestParameters>) -> impl IntoRes
 
     if *TILE_CACHE_ENABLED {
         if let Some(extension) = cache_extension {
-            if let Err(e) = TILE_CACHE.cache_tile(&get_map_params, &png_data, extension).await {
+            if let Err(e) = TILE_CACHE
+                .cache_tile(validator.cache_key(), &png_data, extension)
+                .await
+            {
                 log::warn!("Failed to write tile cache: {}", e);
             }
         }
     }
 
+    tile_response(png_data, &validator, false)
+}
+
+/// A tile with its validators, so the next request can revalidate it.
+fn tile_response(
+    png_data: Vec<u8>,
+    validator: &TileValidator,
+    cache_hit: bool,
+) -> Response<axum::body::Body> {
     Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "image/png")
         .header("Content-Length", png_data.len().to_string())
-        .header("X-Cache-Hit", "false")
+        .header("ETag", validator.etag())
+        .header("Last-Modified", validator.last_modified())
+        .header("X-Cache-Hit", if cache_hit { "true" } else { "false" })
         .body(axum::body::Body::from(png_data))
+        .unwrap()
+}
+
+/// An empty answer for a client that already holds the tile.
+///
+/// A 304 carries no body, so it also carries no `Content-Length`.
+fn not_modified_response(validator: &TileValidator) -> Response<axum::body::Body> {
+    Response::builder()
+        .status(StatusCode::NOT_MODIFIED)
+        .header("ETag", validator.etag())
+        .header("Last-Modified", validator.last_modified())
+        .header("X-Cache-Hit", "validated")
+        .body(axum::body::Body::empty())
         .unwrap()
 }
 
@@ -830,6 +883,7 @@ fn query_features(
     Ok(results)
 }
 
+/// Delete every dataset file, and the tiles that were drawn from them.
 async fn clear_layers() -> impl IntoResponse {
     let layer_dir = misc::get_layer_directory();
     let all_parquet_files = misc::get_parquet_files(&layer_dir);
@@ -843,9 +897,16 @@ async fn clear_layers() -> impl IntoResponse {
         }
     }
 
+    if let Err(e) = TILE_CACHE.clear_cache().await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Layer data cleared, but the tile cache failed: {}", e),
+        );
+    }
+
     (
         StatusCode::OK,
-        format!("Layer data cleared: {:?}", all_parquet_files),
+        format!("Layer data and tile cache cleared: {:?}", all_parquet_files),
     )
 }
 

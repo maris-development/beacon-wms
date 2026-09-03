@@ -207,6 +207,7 @@ The [admin page](#admin-page) at `/admin` runs the same calls from the browser. 
 | `HTTP_HOST` | Request host header | Host used in generated capabilities URLs. |
 | `HTTP_PROTOCOL` | Request protocol | Protocol used in generated capabilities URLs. |
 | `ADMIN_SECRET` | _(empty)_ | Bcrypt hash of the admin secret. Admin endpoints need it (must be set to enable). Plaintext still works and logs a warning. |
+| `WMS_CACHE_MAX_AGE` | `3600` | Seconds a client may reuse a GetMap tile before it revalidates. |
 
 
 

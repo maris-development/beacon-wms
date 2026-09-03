@@ -968,3 +968,53 @@ pub fn get_map_image_extension(format: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+/// Whole seconds since the epoch. An HTTP date holds no smaller unit.
+pub fn unix_seconds(time: SystemTime) -> u64 {
+    time.duration_since(SystemTime::UNIX_EPOCH)
+        .map(|age| age.as_secs())
+        .unwrap_or(0)
+}
+
+/// Modification time of a file, in whole seconds since the epoch. Zero when absent.
+pub fn file_modified_seconds(path: &str) -> u64 {
+    fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .map(unix_seconds)
+        .unwrap_or(0)
+}
+
+/// Modification time of the config file, in whole seconds since the epoch.
+///
+/// Styles and colour maps come from the config, not from the request. A tile must
+/// not survive an edit of that file.
+pub fn config_modified_seconds() -> u64 {
+    file_modified_seconds(&get_config_file_location())
+}
+
+/// Format seconds since the epoch as an HTTP date.
+pub fn format_http_date(seconds: u64) -> String {
+    DateTime::<chrono::Utc>::from_timestamp(seconds as i64, 0)
+        .unwrap_or_default()
+        .format("%a, %d %b %Y %H:%M:%S GMT")
+        .to_string()
+}
+
+/// Parse an HTTP date to whole seconds since the epoch.
+///
+/// The function accepts the three formats that RFC 9110 lists.
+pub fn parse_http_date(value: &str) -> Option<u64> {
+    let value = value.trim();
+
+    let parsed = chrono::NaiveDateTime::parse_from_str(value, "%a, %d %b %Y %H:%M:%S GMT")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(value, "%A, %d-%b-%y %H:%M:%S GMT"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(value, "%a %b %e %H:%M:%S %Y"))
+        .ok()?;
+
+    let seconds = parsed.and_utc().timestamp();
+
+    if seconds < 0 {
+        return None;
+    }
+
+    Some(seconds as u64)
+}

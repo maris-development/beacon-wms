@@ -42,6 +42,7 @@ services:
       - CONFIG_FILE=${CONFIG_FILE:-config.json}
       - LOG_DIR=/app/logs
       - PATH_PREFIX=${PATH_PREFIX:-}
+      - WMS_CACHE_MAX_AGE=${WMS_CACHE_MAX_AGE:-3600}
       - ADMIN_SECRET=${ADMIN_SECRET:-}
     volumes:
       - ./config:/app/config
