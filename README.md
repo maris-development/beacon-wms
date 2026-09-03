@@ -30,11 +30,33 @@ The page gives you:
 
 ### Admin page
 
-`/admin` holds the admin controls. The page asks for `ADMIN_SECRET` first. See
+`/admin` holds the admin controls. The page asks for the admin secret first. See
 [Manual Refresh](#manual-refresh) for what the buttons do.
 
 Serve the site over HTTPS. The secret travels in a request header, and the page keeps
 it in `sessionStorage` until the tab closes.
+
+### Admin Secret
+
+`ADMIN_SECRET` holds a bcrypt hash of the secret. Make the hash one time.
+
+```bash
+cd node-backend
+npx bcrypt "my-secret" 12
+```
+
+Put the output in `ADMIN_SECRET`. Use single quotes in the `.env` file. The hash
+holds `$` characters, and Docker Compose reads an unquoted `$` as a variable. It
+then drops a part of the hash.
+
+```
+ADMIN_SECRET='$2b$12$PssOXswO9ldXZ1pO0Bnn7eDRIByomhCVQ/ppxKR8niUh1NV7l1VsK'
+```
+
+Clients still send the plain secret, not the hash.
+
+A plaintext `ADMIN_SECRET` also works, for backwards compatibility. The node
+backend then writes a warning to the log at startup.
 
 ### Page files
 
@@ -138,12 +160,13 @@ for the same layer wait for that one query.
 ### Manual Refresh
 
 Two admin endpoints control the queue by hand. Both need
-`Authorization: Bearer $ADMIN_SECRET`.
+`Authorization: Bearer <secret>`. Send the plain secret. See
+[Admin Secret](#admin-secret).
 
 `GET /admin/queue` reports the queued layers and the layers that run now.
 
 ```bash
-curl -H "Authorization: Bearer $ADMIN_SECRET" http://localhost:3000/admin/queue
+curl -H "Authorization: Bearer my-secret" http://localhost:3000/admin/queue
 ```
 
 `GET /admin/update` refreshes one queued layer. The request stays open until the
@@ -151,7 +174,7 @@ Beacon query ends, so it can take minutes. Call it again while `queued_count` in
 the answer is above zero.
 
 ```bash
-curl -H "Authorization: Bearer $ADMIN_SECRET" http://localhost:3000/admin/update
+curl -H "Authorization: Bearer my-secret" http://localhost:3000/admin/update
 ```
 
 The `status` field holds one of these values.
@@ -183,7 +206,7 @@ The [admin page](#admin-page) at `/admin` runs the same calls from the browser. 
 | `PATH_PREFIX` | _(empty)_ | URL prefix prepended to Node routes. |
 | `HTTP_HOST` | Request host header | Host used in generated capabilities URLs. |
 | `HTTP_PROTOCOL` | Request protocol | Protocol used in generated capabilities URLs. |
-| `ADMIN_SECRET` | _(empty)_ | Bearer token required for admin endpoints (must be set to enable). |
+| `ADMIN_SECRET` | _(empty)_ | Bcrypt hash of the admin secret. Admin endpoints need it (must be set to enable). Plaintext still works and logs a warning. |
 
 
 

@@ -9,13 +9,12 @@ import { ParamsDictionary } from "express-serve-static-core";
 import { ParsedQs } from "qs";
 import { BeaconWmsService } from "./beacon-wms";
 import logger from "./logger";
+import { AdminSecret } from "./admin-secret";
 
 export class AdminService {
 
     private checkSecret(req: Request): boolean {
-        const adminSecret = process.env.ADMIN_SECRET || "";
-
-        if (!adminSecret || adminSecret.trim().length === 0) {
+        if (!AdminSecret.isSet()) {
             throw new Error("Environment variable ADMIN_SECRET not set. Please set it to a non-empty value to enable admin endpoints.");
         }
 
@@ -25,9 +24,9 @@ export class AdminService {
             throw new Error("No authorization header");
         }
 
-        const token = authHeader.split(" ")[1];
+        const token = authHeader.split(" ")[1] || "";
 
-        if (token !== adminSecret) {
+        if (!AdminSecret.verify(token)) {
             throw new Error("Invalid token");
         }
 

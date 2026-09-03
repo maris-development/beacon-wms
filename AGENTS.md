@@ -49,7 +49,7 @@ Defined in [routes.ts](node-backend/src/service/routes.ts). `PATH_PREFIX` goes b
 | `/workspaces/:workspaceId/wms` | WMS endpoint of one workspace. |
 | `/admin` | Admin page. Static `public/admin.html`. |
 | `/admin/check` | Validates the bearer token. The admin page calls it before it shows anything. |
-| `/admin/clear-layers` | Deletes the cached parquet layers. Needs `Authorization: Bearer $ADMIN_SECRET`. |
+| `/admin/clear-layers` | Deletes the cached parquet layers. Needs `Authorization: Bearer <secret>`. |
 | `/admin/queue` | Reports the refresh queue. Needs the same bearer token. |
 | `/admin/update` | Refreshes one queued layer and waits for it. Needs the same bearer token. |
 
@@ -262,7 +262,11 @@ There is no automated test suite. Verify changes with real WMS requests.
 The [README.md](README.md) holds the full table. The important ones:
 
 - `BEACON_TOKEN` — datalake bearer token. Required for protected datalakes.
-- `ADMIN_SECRET` — bearer token for `/admin/*`. Admin routes stay closed while it is empty.
+- `ADMIN_SECRET` — bcrypt hash of the `/admin/*` secret. Admin routes stay closed while it
+  is empty. A plaintext value still passes, and logs a warning at startup. Clients send
+  the plain secret in the bearer header. Make a hash with `npx bcrypt "<secret>" 12` in
+  `node-backend`. **Single quote the hash in `.env`.** Docker Compose reads an unquoted
+  `$` as a variable and silently drops a part of the hash.
 - `CONFIG_FILE` — selects the config variant, for example `config.ihm.json`.
 - `TILE_CACHE_ENABLED` — `1`, `true`, `yes` or `on` turns the tile cache on.
 - `HOST_HTTP_PORT` — host port for the node backend. Default is `3000`.
@@ -285,6 +289,7 @@ The [README.md](README.md) holds the full table. The important ones:
 | [service/wms-xml.ts](node-backend/src/service/wms-xml.ts) | Renders capabilities XML and error XML. |
 | [service/config.ts](node-backend/src/service/config.ts) | Reads and caches `config.json`. |
 | [service/admin.ts](node-backend/src/service/admin.ts) | Bearer token check and the admin proxies. |
+| [service/admin-secret.ts](node-backend/src/service/admin-secret.ts) | Verifies the bearer token against `ADMIN_SECRET`. bcrypt, or plaintext. |
 | [service/logger.ts](node-backend/src/service/logger.ts) | Winston, daily rotate to `LOG_DIR`. |
 | [types/](node-backend/src/types/) | Config types and OGC WMS parameter types. |
 | [templates/](node-backend/templates/) | EJS templates for the WMS XML. |

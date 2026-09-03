@@ -4,6 +4,7 @@ import { routes } from "./service/routes";
 import path from "path";
 import { BeaconWmsService } from "./service/beacon-wms";
 import { AdminService } from "./service/admin";
+import { AdminSecret } from "./service/admin-secret";
 import { WorkspaceConfig } from "./types/config";
 import logger from "./service/logger";
 
@@ -13,6 +14,8 @@ const adminService: AdminService = new AdminService();
 
 
 config.load(); // async Load config at startup
+
+AdminSecret.reportFormat();
 
 const http_address = process.env.HTTP_ADDRESS || "0.0.0.0";
 const http_port: number = parseInt(process.env.HTTP_PORT || '3000');
