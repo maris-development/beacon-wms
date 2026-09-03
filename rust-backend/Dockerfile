@@ -57,12 +57,14 @@ RUN cargo build --release
 
 FROM debian:bullseye-slim
 
+# fonts-dejavu-core holds the font of the legend labels.
 RUN apt-get update && apt-get install -y \
     libssl1.1 \
     libfreetype6 \
     libexpat1 \
     libxml2 \
     libproj-dev proj-data proj-bin \
+    fonts-dejavu-core \
     file \
     && rm -rf /var/lib/apt/lists/*
 

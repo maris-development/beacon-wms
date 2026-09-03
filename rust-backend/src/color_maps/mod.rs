@@ -256,6 +256,10 @@ impl ColorMap {
         self.max_value
     }
 
+    pub fn is_log(&self) -> bool {
+        self.log
+    }
+
     fn interpolate(
         &self,
         lower_index: usize,

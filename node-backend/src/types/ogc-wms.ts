@@ -58,7 +58,11 @@ export type WMSGetLegendGraphicParameters = {
     version: string;
     layer: string;
     style?: string;
-    width?: string;
-    height?: string;
+    width?: string;          // Width of the color bar in pixels
+    height?: string;         // Height of the color bar in pixels
     format?: string;
+
+    // Custom parameters
+    orientation?: string;    // "horizontal" (default) or "vertical"
+    blips?: string;          // Labelled steps between the min and the max value
 };

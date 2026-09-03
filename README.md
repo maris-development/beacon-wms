@@ -105,6 +105,7 @@ npm run dev
 | `HTTP_PORT` | `8000` | Rust backend HTTP port. |
 | `WORKERS` | `4` | Number of Tokio async worker threads. They run protocol and I/O work only. |
 | `MAP_WORKERS` | _(CPU cores)_ | Number of GetMap renders that run at the same time. |
+| `LABEL_FONT_PATH` | _(none)_ | TrueType font file for the legend labels. The backend searches the system fonts when it is empty. |
 | `LOG_DIR` | `../logs` | Directory for backend logs. |
 | `LOG_LEVEL` | `INFO` | Log verbosity (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`). |
 | `CONFIG_DIR` | `../config` | Base directory for config files like `config.json` and `colormaps.json`. |

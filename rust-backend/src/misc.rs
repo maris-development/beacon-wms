@@ -52,10 +52,101 @@ struct CachedConfig {
     config: Arc<crate::config::ConfigFile>,
 }
 
+/// Font files for image labels, in order of preference. A container holds no
+/// font service, so the loader reads these paths before it asks the system.
+const LABEL_FONT_PATHS: [&str; 5] = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+];
+
+/// Font families for image labels, in order of preference.
+const LABEL_FONT_FAMILIES: [&str; 5] = [
+    "DejaVu Sans",
+    "Liberation Sans",
+    "FreeSans",
+    "Ubuntu",
+    "Arial",
+];
+
 // Initialize the cache
 lazy_static! {
     static ref PROJ_CACHE: RwLock<HashMap<String, Proj>> = RwLock::new(HashMap::new());
     static ref CONFIG_CACHE: RwLock<Option<CachedConfig>> = RwLock::new(None);
+    static ref LABEL_FONT_DATA: Option<Vec<u8>> = find_label_font();
+}
+
+/// Bytes of a system font for image labels. `None` means the system holds no
+/// usable font, and the caller must draw the image without text.
+pub fn label_font_data() -> Option<&'static [u8]> {
+    LABEL_FONT_DATA.as_deref()
+}
+
+/// Find a font once. The search runs from `LABEL_FONT_PATH`, over the known
+/// font files, to any family that the system reports.
+fn find_label_font() -> Option<Vec<u8>> {
+    let configured_path = get_env_var("LABEL_FONT_PATH", None);
+
+    if !configured_path.is_empty() {
+        match read_font_file(&configured_path) {
+            Some(data) => {
+                log::info!("Label font: {}", configured_path);
+                return Some(data);
+            }
+            None => log::error!("LABEL_FONT_PATH holds no usable font: {}", configured_path),
+        }
+    }
+
+    for path in LABEL_FONT_PATHS {
+        if let Some(data) = read_font_file(path) {
+            log::info!("Label font: {}", path);
+            return Some(data);
+        }
+    }
+
+    for family in LABEL_FONT_FAMILIES {
+        if let Some(data) = read_font_family(family) {
+            log::info!("Label font: {}", family);
+            return Some(data);
+        }
+    }
+
+    for family in system_fonts::query_all() {
+        if let Some(data) = read_font_family(&family) {
+            log::info!("Label font: {}", family);
+            return Some(data);
+        }
+    }
+
+    log::warn!("No system font found. Images get no labels.");
+
+    None
+}
+
+fn read_font_file(path: &str) -> Option<Vec<u8>> {
+    let data = fs::read(path).ok()?;
+
+    if Font::try_from_bytes(&data).is_none() {
+        return None;
+    }
+
+    Some(data)
+}
+
+fn read_font_family(family: &str) -> Option<Vec<u8>> {
+    let property = system_fonts::FontPropertyBuilder::new()
+        .family(family)
+        .build();
+
+    let (data, _) = system_fonts::get(&property)?;
+
+    if Font::try_from_bytes(&data).is_none() {
+        return None;
+    }
+
+    Some(data)
 }
 
 pub fn get_string_value(col: &Arc<dyn Array>, row_idx: usize) -> String {

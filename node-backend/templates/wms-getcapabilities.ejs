@@ -106,10 +106,11 @@
                             <Name><%= style.name %></Name>
                             <Title><%= style.description %> (shape: <%= layer.config.shape %>)</Title>
                             <% if (style.name === defaultStyleName) { %>
-                                <LegendURL width="20" height="200">
+                                <%# WIDTH and HEIGHT size the color bar. The image grows for the value labels, so the attributes hold the larger size. %>
+                                <LegendURL width="240" height="46">
                                     <Format>image/png</Format>
                                     <OnlineResource xlink:type="simple"
-                                        xlink:href="<%= baseUrl %>?SERVICE=WMS&amp;VERSION=<%= wmsVersion %>&amp;REQUEST=GetLegendGraphic&amp;LAYER=<%= layer.id %>&amp;STYLE=<%= style.name %>&amp;WIDTH=20&amp;HEIGHT=200&amp;FORMAT=image/png" />
+                                        xlink:href="<%= baseUrl %>?SERVICE=WMS&amp;VERSION=<%= wmsVersion %>&amp;REQUEST=GetLegendGraphic&amp;LAYER=<%= layer.id %>&amp;STYLE=<%= style.name %>&amp;WIDTH=200&amp;HEIGHT=20&amp;FORMAT=image/png" />
                                 </LegendURL>
                             <% } %>
                         </Style>

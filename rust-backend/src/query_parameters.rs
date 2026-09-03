@@ -99,6 +99,11 @@ pub struct GetLegendGraphicRequestParameters {
 
     // OGC WMS optional:
     pub style: Option<String>,
+    // Width and height size the color bar. The image grows to hold the labels.
     pub width: Option<u32>,
     pub height: Option<u32>,
+
+    // Custom optional:
+    pub orientation: Option<String>, // horizontal (default) or vertical
+    pub blips: Option<u32>,          // labelled steps between min and max
 }

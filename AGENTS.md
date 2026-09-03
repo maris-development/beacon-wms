@@ -91,11 +91,29 @@ changes without a window resize. A `ResizeObserver` on the map container calls
 | `/` | Health text. |
 | `/get-map` | Draws the PNG. |
 | `/get-feature-info` | Returns features as JSON, HTML or GML. |
-| `/get-legend-graphic` | Draws a vertical color bar. |
+| `/get-legend-graphic` | Draws a color bar with value blips. |
 | `/available-styles` | Lists the colormaps. Used by `GetCapabilities`. |
 | `/clear-layers` | Deletes all parquet files in `LAYER_DIR`. |
 | `/queue` | Reports the refresh queue as JSON. |
 | `/update` | Refreshes one queued layer. Blocks until the query ends. |
+
+### Legend graphic
+
+[legend/mod.rs](rust-backend/src/legend/mod.rs) draws the bar plus the blips. A blip is a
+tick mark with a value label. `blips` sets the steps between the minimum and the maximum.
+`orientation` takes `vertical` or `horizontal`. The default is horizontal, which suits the
+legend row of the preview page.
+
+`WIDTH` and `HEIGHT` size the color bar, not the image, and the default is `200x20`. The
+image grows around the bar to hold the labels, so the `LegendURL` size in the capabilities
+XML is a hint only. Blips too close together drop out, because the labels must keep apart.
+
+The labels need a font. The loader takes `LABEL_FONT_PATH`, then the known font files, then
+any system family. A system without a font gets a bar without labels, so the runtime image
+installs `fonts-dejavu-core`.
+
+Blips use the same normalization as `ColorMap::query`. A logarithmic scale steps by a
+constant factor, which keeps the blips even on the bar.
 
 ## 5. Configuration
 

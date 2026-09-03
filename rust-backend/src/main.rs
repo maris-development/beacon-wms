@@ -960,10 +960,14 @@ async fn get_legend_graphic(
         }
     };
 
-    let width = params.width.unwrap_or(20);
-    let height = params.height.unwrap_or(200);
+    let options = legend::LegendOptions::new(
+        params.width,
+        params.height,
+        params.orientation.as_deref(),
+        params.blips,
+    );
 
-    let image = legend::draw_legend_graphic(&color_map, width, height);
+    let image = legend::draw_legend_graphic(&color_map, &options);
 
     let mut png_data: Vec<u8> = Vec::new();
     match image_utils::rgba_image_to_png(&image, &mut png_data) {

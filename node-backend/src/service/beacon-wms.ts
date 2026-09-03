@@ -12,6 +12,8 @@ export class BeaconWmsService {
     private beaconWmsBaseUrl = 'http://localhost:8000'; // Default Rust service base URL
     private allowedOgcVersions = ['1.1.1', '1.3.0'];
 
+    public static LEGEND_ORIENTATIONS = ['vertical', 'horizontal'];
+
     public static CORS_HEADERS = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -396,6 +398,8 @@ export class BeaconWmsService {
             width: queryParameters['width'],
             height: queryParameters['height'],
             format: queryParameters['format'],
+            orientation: queryParameters['orientation'],
+            blips: queryParameters['blips'],
         };
 
         if (!params.layer) {
@@ -409,12 +413,28 @@ export class BeaconWmsService {
             return;
         }
 
+        const orientation = params.orientation?.trim().toLowerCase();
+
+        if (orientation && !BeaconWmsService.LEGEND_ORIENTATIONS.includes(orientation)) {
+            this.wmsXml.error(res, "InvalidParameterValue", `The 'orientation' parameter must be one of: ${BeaconWmsService.LEGEND_ORIENTATIONS.join(", ")}`);
+            return;
+        }
+
+        const blips = params.blips?.trim();
+
+        if (blips && !/^\d+$/.test(blips)) {
+            this.wmsXml.error(res, "InvalidParameterValue", "The 'blips' parameter must be a whole number");
+            return;
+        }
+
         const url = new URL("/get-legend-graphic", this.beaconWmsBaseUrl);
         url.searchParams.append("workspace", workspace.id);
         url.searchParams.append("layer", params.layer);
         if (params.style) url.searchParams.append("style", params.style);
         if (params.width) url.searchParams.append("width", params.width);
         if (params.height) url.searchParams.append("height", params.height);
+        if (orientation) url.searchParams.append("orientation", orientation);
+        if (blips) url.searchParams.append("blips", blips);
 
         fetch(url)
             .then(r => {
