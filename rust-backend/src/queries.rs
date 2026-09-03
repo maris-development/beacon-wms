@@ -52,7 +52,7 @@ pub async fn get_dataset_file(
     let fetch_lock = get_fetch_lock(dataset_map, &layer_filepath).await;
 
     if let Some(result) = open_current(dataset_map, &layer_filepath).await {
-        if let Some(age) = stale_age(&layer_filepath) {
+        if stale_age(&layer_filepath).is_some() {
             refresh::enqueue(&layer_filepath, &layer_config).await;
         }
 
