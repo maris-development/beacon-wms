@@ -233,7 +233,7 @@
                             ]
                         },
                         "default_style": "thermal",
-                        "instance_url": "https://beacon-cdi.maris.nl",
+                        "instance_url": "https://seadata-beacon.cineca.it/beacon",
                         "query": {
                             "output": {
                                 "format": "parquet"
