@@ -502,7 +502,9 @@ pub fn coordinates_to_pixel_offset(
     let pixel_y = image_height as f64
         - ((y - bbox.get_min_y()) / (bbox.get_max_y() - bbox.get_min_y()) * image_height as f64);
 
-    (pixel_x as i32, pixel_y as i32)
+    // Floor, not truncate. A cast rounds towards zero, so a point left of or above the
+    // image lands on pixel 0 instead of -1, which shifts its icon by one pixel.
+    (pixel_x.floor() as i32, pixel_y.floor() as i32)
 }
 
 pub fn f_min(a: f64, b: f64) -> f64 {

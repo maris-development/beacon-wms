@@ -270,7 +270,7 @@ coordinates plus a level of detail pyramid over them. It is built once per layer
 generation and CRS, and it is the reason a 28 M row layer draws a tile in about 2 ms
 instead of 185 ms.
 
-Three properties carry the design. Do not break them.
+Four properties carry the design. Do not break them.
 
 - **A level cell is one screen pixel of the zoom it serves.** The level grid follows the
   CRS extent, so the cell lines up with the pixel grid of a standard tile. Take the span
@@ -282,11 +282,36 @@ Three properties carry the design. Do not break them.
 - **A cell of the index grid must not be wider than a tile** of the zoom that the level
   serves. Sizing the grid by point count alone leaves a cell far wider than a tile at
   high zoom, and one query then scans the whole cell.
+- **A query answers in file order, never in index order.** `collect_in_bbox` gathers the
+  runs and sorts them. Two icons that overlap draw one over the other, so the order picks
+  the colour of the shared pixels. Index order runs cell by cell, which draws a hard line
+  on every cell border of the grid. Those lines look like tile borders, but they follow
+  the grid, not the tile scheme.
 
 Thinning keeps the **lowest row number** of each cell, which is the row that a full
-resolution draw would keep. The pyramid therefore draws the same points as an
-unindexed scan. Only the colour of an overlapped pixel can differ, because a different
-icon wins it.
+resolution draw would keep. With file order restored, the pyramid draws its points in
+the order of an unindexed scan. Only the points that thinning drops can change a pixel.
+
+### Tile borders
+
+A tile must hold the same pixels as a larger image of the same extent. Two rules in
+[map_drawing/mod.rs](rust-backend/src/map_drawing/mod.rs) keep that true.
+
+- **The dedup grid holds the margin band.** It measures
+  `(width + 2 * reach) x (height + 2 * reach)`, and a lookup adds `reach`. A point
+  outside the image draws an icon into the image, so it must claim its pixel in the same
+  way. A grid of image size only lets the whole neighbourhood of the border draw, and
+  the border band then stacks icons that the tile centre drops.
+- **The draw path culls each point against the margin box.** The index answers by whole
+  cells, and a cell can be as wide as a tile, so it hands over points that no rule of
+  the tile covers.
+
+`misc::coordinates_to_pixel_offset` floors. A cast rounds towards zero, which puts a
+point left of or above the image on pixel 0 instead of -1.
+
+`cargo run --release --example seamcheck -- <layer.parquet> <lon> <lat> <zoom>` proves
+it. It counts the pixels of a tile mosaic that differ from one image of the same extent,
+by distance to the tile border. The count must be zero.
 
 `misc::CoordinateTransform` resolves a projection pair once. Use it for a loop over many
 points. `misc::transform_coordinates` builds one per call, so it suits single points only.

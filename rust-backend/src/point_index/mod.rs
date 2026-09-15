@@ -202,11 +202,17 @@ impl LayerPoints {
         self.levels.len()
     }
 
+    /// Coordinates and value of one row.
+    pub fn point(&self, row: u32) -> (f64, f64, f64) {
+        let row = row as usize;
+
+        (self.x[row], self.y[row], self.v[row])
+    }
+
     /// Call `f` with every point of the level that serves `zoom` inside the box.
     ///
-    /// The box may reach past the grid. It is clamped, so a query outside the data
-    /// extent calls `f` no times. Returns the number of points the query visited, which
-    /// is the cost of the tile.
+    /// The order follows the index grid, so it carries the shape of the cells. A draw
+    /// path must not use it. Call `collect_in_bbox` instead.
     pub fn for_each_in_bbox<F>(
         &self,
         zoom: u32,
@@ -219,6 +225,42 @@ impl LayerPoints {
     where
         F: FnMut(f64, f64, f64),
     {
+        self.collect_in_bbox(zoom, min_x, min_y, max_x, max_y, &mut Vec::new(), |row| {
+            let (x, y, v) = self.point(row);
+
+            f(x, y, v);
+        })
+    }
+
+    /// Put the rows of the level that serves `zoom` inside the box in `rows`, in file
+    /// order, then call `f` with each of them. Returns the number of points visited,
+    /// which is the cost of the tile.
+    ///
+    /// The box may reach past the grid. It is clamped, so a query outside the data
+    /// extent calls `f` no times. The index answers by whole cells, so a row can sit
+    /// outside the box. The caller culls those.
+    ///
+    /// **File order matters.** Two icons that overlap draw one over the other, so the
+    /// order decides the colour of the shared pixels. Index order runs cell by cell,
+    /// which puts a hard edge on every cell border of the grid. File order holds no
+    /// such shape, and it is the order that a scan of the whole layer draws in.
+    ///
+    /// `rows` is a scratch buffer. The caller keeps it to save an allocation per tile.
+    pub fn collect_in_bbox<F>(
+        &self,
+        zoom: u32,
+        min_x: f64,
+        min_y: f64,
+        max_x: f64,
+        max_y: f64,
+        rows: &mut Vec<u32>,
+        mut f: F,
+    ) -> usize
+    where
+        F: FnMut(u32),
+    {
+        rows.clear();
+
         if self.x.is_empty() || min_x > max_x || min_y > max_y {
             return 0;
         }
@@ -251,11 +293,14 @@ impl LayerPoints {
 
             scanned += to - from;
 
-            for &i in &level.idx[from..to] {
-                let i = i as usize;
+            rows.extend_from_slice(&level.idx[from..to]);
+        }
 
-                f(self.x[i], self.y[i], self.v[i]);
-            }
+        // A run holds file order, but the runs come cell by cell. Restore file order.
+        rows.sort_unstable();
+
+        for &row in rows.iter() {
+            f(row);
         }
 
         scanned

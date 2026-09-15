@@ -93,16 +93,22 @@ pub fn get_map(
 
     // An icon reaches point_radius + 1 pixels past its centre. A point further out than
     // that cannot colour a pixel of this tile, so the cull box needs no more margin.
-    let reach = (point_radius + 1) as f64;
-    let margin_x = reach * reprojected_bbox.get_width() / img_w as f64;
-    let margin_y = reach * reprojected_bbox.get_height() / img_h as f64;
+    let reach = point_radius + 1;
+    let margin_x = reach as f64 * reprojected_bbox.get_width() / img_w as f64;
+    let margin_y = reach as f64 * reprojected_bbox.get_height() / img_h as f64;
 
     let bbox_min_x = reprojected_bbox.get_min_x() - margin_x;
     let bbox_max_x = reprojected_bbox.get_max_x() + margin_x;
     let bbox_min_y = reprojected_bbox.get_min_y() - margin_y;
     let bbox_max_y = reprojected_bbox.get_max_y() + margin_y;
 
-    let mut drawn_pixel_grid: Vec<bool> = vec![false; (img_w as usize) * (img_h as usize)];
+    // The dedup grid holds the margin band too, so a point outside the image claims its
+    // pixel in the same way. Without that band the edge stacks every icon of the
+    // neighbour tile, and the index hands those points over last, so they overwrite.
+    let grid_w = img_w as usize + 2 * reach as usize;
+    let grid_h = img_h as usize + 2 * reach as usize;
+
+    let mut drawn_pixel_grid: Vec<bool> = vec![false; grid_w * grid_h];
     let mut drawn_count: usize = 0;
 
     // Every point of this tile draws the same icon, so its runs are built once.
@@ -127,18 +133,36 @@ pub fn get_map(
         profiling,
     )?;
 
-    let scanned = points.for_each_in_bbox(zoom, bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y, |x, y, value| {
+    let mut rows: Vec<u32> = Vec::new();
+
+    let scanned = points.collect_in_bbox(zoom, bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y, &mut rows, |row| {
+        let (x, y, value) = points.point(row);
+
+        // The index answers by whole cells, and a cell is wider than the box. Cull here.
+        if x < bbox_min_x || x > bbox_max_x || y < bbox_min_y || y > bbox_max_y {
+            return;
+        }
+
         let offset =
             misc::coordinates_to_pixel_offset(&reprojected_bbox, (img_w, img_h), (x, y));
 
+        let grid_x = offset.0 + reach;
+        let grid_y = offset.1 + reach;
+
         // Pixel-grid deduplication: skip if this pixel was already drawn
-        if offset.0 >= 0 && offset.0 < img_w as i32 && offset.1 >= 0 && offset.1 < img_h as i32 {
-            let grid_idx = offset.1 as usize * img_w as usize + offset.0 as usize;
+        if grid_x >= 0 && grid_x < grid_w as i32 && grid_y >= 0 && grid_y < grid_h as i32 {
+            let grid_idx = grid_y as usize * grid_w + grid_x as usize;
+
             if drawn_pixel_grid[grid_idx] {
                 return;
             }
+
             drawn_pixel_grid[grid_idx] = true;
-            drawn_count += 1;
+
+            // The stat counts the icons of this tile, so the margin band stays out.
+            if offset.0 >= 0 && offset.0 < img_w as i32 && offset.1 >= 0 && offset.1 < img_h as i32 {
+                drawn_count += 1;
+            }
         }
 
         // O(1) LUT lookup, on a point that survived the cull
