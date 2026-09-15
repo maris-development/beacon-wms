@@ -550,54 +550,6 @@ pub fn inside_image(image: &RgbaImage, point: (i32, i32)) -> bool {
     point_x >= 0 && point_x < image_width as i32 && point_y >= 0 && point_y < image_height as i32
 }
 
-#[allow(dead_code)]
-/// Draw a circle on an image, use mageproc::drawing::draw_filled_circle for nicer results.
-pub fn draw_circle(
-    image: &mut RgbaImage,
-    center: (i32, i32),
-    radius: i32,
-    opt_color: Option<Rgba<u8>>,
-) {
-    let red = Rgba([255u8, 0u8, 0u8, 255u8]);
-    let color = opt_color.unwrap_or(red);
-    let diameter = radius * 2;
-
-    let (center_x, center_y) = center;
-
-    let x = center_x as i32 - radius;
-    let y = center_y as i32 - radius;
-
-    // pub fn draw_filled_circle<I>(
-    //     image: &I,
-    //     center: (i32, i32),
-    //     radius: i32,
-    //     color: I::Pixel
-    // ) -> Image<I::Pixel>
-    // *image = imageproc::drawing::draw_filled_circle(image, center, radius, color);
-
-    for i in 0..diameter {
-        for j in 0..diameter {
-            let point = (x + i, y + j);
-
-            if inside_image(image, point) && inside_circle(center, point, radius) {
-                image.put_pixel(point.0 as u32, point.1 as u32, color);
-            }
-        }
-    }
-}
-
-/// Check if a point is inside a circle of radius `radius` centered at `center`.
-pub fn inside_circle(center: (i32, i32), point: (i32, i32), radius: i32) -> bool {
-    let (center_x, center_y) = center;
-    let (point_x, point_y) = point;
-
-    let dx = center_x - point_x;
-    let dy = center_y - point_y;
-
-    let distance_squared = dx * dx + dy * dy;
-
-    distance_squared <= (radius * radius)
-}
 
 #[allow(dead_code)]
 /// Debug function to print the x, y, and zoom level on the tile image
@@ -847,6 +799,43 @@ pub fn get_refresh_concurrency() -> usize {
     let value = get_env_number("REFRESH_CONCURRENCY", 1).max(1);
 
     value as usize
+}
+
+/// Time a GetMap may wait for a render slot. Zero turns the limit off. Default is 20s.
+pub fn get_map_queue_timeout() -> Option<Duration> {
+    let seconds = get_env_number("MAP_QUEUE_TIMEOUT_SECONDS", 20);
+
+    match seconds {
+        0 => None,
+        n => Some(Duration::from_secs(n)),
+    }
+}
+
+/// Time a GetMap may wait for its render. Zero turns the limit off. Default is 60s.
+pub fn get_map_render_timeout() -> Option<Duration> {
+    let seconds = get_env_number("MAP_RENDER_TIMEOUT_SECONDS", 60);
+
+    match seconds {
+        0 => None,
+        n => Some(Duration::from_secs(n)),
+    }
+}
+
+/// Reads an environment flag. Accepts 1, true, yes and on.
+pub fn get_env_flag(var_name: &str, default: bool) -> bool {
+    let raw = get_env_var(var_name, None);
+    let raw = raw.trim();
+
+    if raw.is_empty() {
+        return default;
+    }
+
+    matches!(raw.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
+}
+
+/// Writes a timing report for every GetMap render. Default is off.
+pub fn map_profiling_enabled() -> bool {
+    get_env_flag("PROFILE_MAPS", false)
 }
 
 pub fn get_env_var(var_name: &str, default: Option<&str>) -> String {

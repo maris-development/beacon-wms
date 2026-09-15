@@ -4,12 +4,15 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use crate::{image_utils, misc};
 
 const COLOR_ALPHA: u8 = 255;
+
+/// Entries in the draw lookup table. It resolves a value to about 0.1% of the range.
+pub const LUT_SIZE: usize = 1024;
 
 lazy_static! {
     static ref COLOR_MAPS_CACHE: Mutex<HashMap<String, ColorMap>> = Mutex::new(HashMap::new());
@@ -102,6 +105,8 @@ pub struct ColorMap {
     log: bool,
     min_value: f64,
     max_value: f64,
+    /// Draw lookup table, built on first use. Clones share it, so a tile never rebuilds it.
+    lut: Arc<OnceLock<Vec<u32>>>,
 }
 
 impl ColorMap {
@@ -186,6 +191,7 @@ impl ColorMap {
             log,
             min_value,
             max_value,
+            lut: Arc::new(OnceLock::new()),
         }
     }
 
@@ -237,6 +243,11 @@ impl ColorMap {
     
     /// Build a pre-computed lookup table of `size` entries spanning [min_value, max_value].
     /// Returns packed u32 RGBA values for direct use in the rendering loop.
+    /// Packed RGBA of every step of the scale. The first call builds it.
+    pub fn lut(&self) -> &[u32] {
+        self.lut.get_or_init(|| self.build_lut(LUT_SIZE))
+    }
+
     pub fn build_lut(&self, size: usize) -> Vec<u32> {
         let mut lut = Vec::with_capacity(size);
         for i in 0..size {

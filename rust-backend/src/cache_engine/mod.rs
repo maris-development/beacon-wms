@@ -1,9 +1,7 @@
 use arrow::{array::{Float64Array, RecordBatch}, datatypes::{DataType, Field}};
-use lru::LruCache;
 use std::{
     collections::HashMap,
-    num::NonZeroUsize,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
 };
 
 use crate::{
@@ -12,88 +10,10 @@ use crate::{
     misc::{self, CoordinateTransform},
 };
 
-pub const LRU_CACHE_SIZE: usize = 50000;
-
-/// Cache of reprojected record batches.
-///
-/// The lock guards the cache only. A reprojection runs outside it, so a slow batch
-/// never blocks another thread. Two threads can reproject the same batch. That costs
-/// less than one lock over the whole loop.
-pub struct ReprojectedDatasetCacheEngine {
-    projections: RwLock<LruCache<String, RecordBatch>>,
-}
-
-impl ReprojectedDatasetCacheEngine {
-    pub fn new() -> Self {
-        let size = NonZeroUsize::new(LRU_CACHE_SIZE).unwrap();
-
-        ReprojectedDatasetCacheEngine {
-            projections: RwLock::new(LruCache::new(size)),
-        }
-    }
-
-    /// Reproject a batch. A cached batch returns at once.
-    pub fn apply_projection_to_batch(
-        &self,
-        source_projection_code: impl AsRef<str>,
-        target_projection_code: impl AsRef<str>,
-        record_batch_name: impl AsRef<str>,
-        batch: RecordBatch,
-    ) -> Result<RecordBatch, MapError> {
-        let target_projection_code = target_projection_code.as_ref();
-        let cache_key = get_cache_key(target_projection_code, record_batch_name);
-
-        if let Some(cached) = self.get_by_key(&cache_key) {
-            return Ok(cached);
-        }
-
-        let projected = reproject_batch(
-            source_projection_code.as_ref(),
-            target_projection_code,
-            batch,
-        )?;
-
-        self.projections
-            .write()
-            .unwrap()
-            .put(cache_key, projected.clone());
-
-        Ok(projected)
-    }
-
-    pub fn get_projection_applied_batch(
-        &self,
-        projection: impl AsRef<str>,
-        record_batch_name: impl AsRef<str>,
-    ) -> Option<RecordBatch> {
-        self.get_by_key(&get_cache_key(projection, record_batch_name))
-    }
-
-    /// Cloning a record batch copies shared references into arrow buffers, so it is cheap.
-    fn get_by_key(&self, cache_key: &str) -> Option<RecordBatch> {
-        self.projections.write().unwrap().get(cache_key).cloned()
-    }
-
-    pub fn cache_len(&self) -> usize {
-        self.projections.read().unwrap().len()
-    }
-
-    pub fn cache_memory_bytes(&self) -> usize {
-        self.projections
-            .read()
-            .unwrap()
-            .iter()
-            .map(|(_, batch)| {
-                batch.columns().iter().map(|col| col.get_array_memory_size()).sum::<usize>()
-            })
-            .sum()
-    }
-}
-
 /// Reproject the coordinates of a batch and keep only longitude, latitude and value.
 ///
-/// All other columns are dropped, so a cached batch stays small.
-fn reproject_batch(
+/// All other columns are dropped, so the result stays small.
+pub fn reproject_batch(
     source_projection_code: &str,
     target_projection_code: &str,
     batch: RecordBatch,
@@ -228,8 +148,4 @@ impl DecodeGates {
 /// Lock a gate and survive a poisoned mutex.
 pub fn lock_gate(gate: &Mutex<()>) -> std::sync::MutexGuard<'_, ()> {
     gate.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-fn get_cache_key(projection_code: impl AsRef<str>, dataset_name: impl AsRef<str>) -> String {
-    format!("{}-{}", projection_code.as_ref(), dataset_name.as_ref()).to_lowercase()
 }

@@ -1,22 +1,22 @@
-use arrow::array::{AsArray, PrimitiveArray, RecordBatch};
-use arrow::compute::CastOptions;
-use arrow::datatypes::{Float64Type, UInt32Type};
+use arrow::array::RecordBatch;
 use boundingbox::BoundingBox;
 use image::{GenericImage, Pixel, Rgba, RgbaImage};
 use lazy_static::lazy_static;
 use log;
+use std::sync::Arc;
 
-use crate::cache_engine::{self, DecodeGates, ReprojectedDatasetCacheEngine};
+use crate::cache_engine::{self, DecodeGates};
 use crate::color_maps::ColorMap;
 use crate::data_utils::{self};
 use crate::errors::MapError;
+use crate::point_index::{LayerPoints, PointIndexCache};
 use crate::request_profiling::RequestProfiling;
 use crate::{boundingbox, image_utils, misc};
 use std::fs::File;
 
 lazy_static! {
-    pub static ref REPROJECTED_DATASET_CACHE: ReprojectedDatasetCacheEngine =
-        ReprojectedDatasetCacheEngine::new();
+    /// Built pyramids, one per layer file, generation and CRS.
+    pub static ref POINT_INDEX_CACHE: PointIndexCache = PointIndexCache::from_env();
 
     /// Keeps concurrent tiles of the same layer and CRS to one parquet decode.
     pub static ref DECODE_GATES: DecodeGates = DecodeGates::new();
@@ -29,6 +29,15 @@ pub const VALUE_COLUMN: &'static str = "value";
 
 pub const COLOR_ONLY_ZOOMLEVEL: u32 = 6;
 pub const SMALL_ICON_ZOOMLEVEL: u32 = 8;
+
+/// What one layer cost on one tile.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DrawStats {
+    /// Points the index handed to the draw loop.
+    pub scanned: usize,
+    /// Points that claimed a pixel and drew an icon.
+    pub drawn: usize,
+}
 
 /// Draw map on image
 ///
@@ -44,12 +53,12 @@ pub fn get_map(
     generation: u64,
     icon_shape: &str,
     profiling: &mut RequestProfiling
-) -> Result<usize, MapError> {
+) -> Result<DrawStats, MapError> {
 
     match file.metadata() {
         Ok(metadata) => {
             if metadata.len() == 0 {
-                return Ok(0);
+                return Ok(DrawStats::default());
             }
         }
         Err(e) => {
@@ -77,209 +86,158 @@ pub fn get_map(
         MapError::Error(e)
     })?;
 
-    //split layers by , and check if the .ipc file exists:
     let degree_per_pixel = bounding_box.get_width_degrees() / image.width() as f64;
     let zoom = misc::degrees_per_pixel_to_zoom(degree_per_pixel, None);
     let point_radius = misc::calculate_point_radius(zoom, 5.0, 40.0);
-    // let scale_factor: f64 = misc::calculate_scale_factor(degree_per_pixel);
-    let margin = reprojected_bbox.get_width() * 0.1;
-    // Pre-compute bbox bounds for fast inline checks (avoids method call + Option unwrap per point)
-    let bbox_min_x = reprojected_bbox.get_min_x() - margin;
-    let bbox_max_x = reprojected_bbox.get_max_x() + margin;
-    let bbox_min_y = reprojected_bbox.get_min_y() - margin;
-    let bbox_max_y = reprojected_bbox.get_max_y() + margin;
     let (img_w, img_h) = image.dimensions();
+
+    // An icon reaches point_radius + 1 pixels past its centre. A point further out than
+    // that cannot colour a pixel of this tile, so the cull box needs no more margin.
+    let reach = (point_radius + 1) as f64;
+    let margin_x = reach * reprojected_bbox.get_width() / img_w as f64;
+    let margin_y = reach * reprojected_bbox.get_height() / img_h as f64;
+
+    let bbox_min_x = reprojected_bbox.get_min_x() - margin_x;
+    let bbox_max_x = reprojected_bbox.get_max_x() + margin_x;
+    let bbox_min_y = reprojected_bbox.get_min_y() - margin_y;
+    let bbox_max_y = reprojected_bbox.get_max_y() + margin_y;
+
     let mut drawn_pixel_grid: Vec<bool> = vec![false; (img_w as usize) * (img_h as usize)];
     let mut drawn_count: usize = 0;
 
-    // Build color lookup table (1024 entries) for O(1) color mapping
-    let color_lut = color_map.build_lut(1024);
+    // Shared color lookup table for O(1) color mapping
+    let color_lut = color_map.lut();
     let lut_size = color_lut.len();
     let cm_min = color_map.get_min_value();
     let cm_range = color_map.get_max_value() - cm_min;
 
-    // Read only the parquet footer to determine how many batches exist (no data pages read)
-    let num_batches = data_utils::get_parquet_batch_count(&layer_filepath, file.try_clone()?)?;
-
-    // Cache keys carry the generation, so a refreshed file never reuses old batches
+    // Cache keys carry the generation, so a refreshed file never reuses old points
     let cache_key_base = format!("{}#{}_{}", layer_filepath, generation, target_projection_code);
 
-    // log::info!("Drawing results for file: {}", layer_filepath);
+    let points = resolve_points(
+        &cache_key_base,
+        &layer_filepath,
+        file,
+        source_projection_code,
+        target_projection_code,
+        &reprojected_bbox,
+        profiling,
+    )?;
 
-    // log::info!("Reprojection cache: {}/{} entries ({:.1} MB)", REPROJECTED_DATASET_CACHE.cache_len(), crate::cache_engine::LRU_CACHE_SIZE, REPROJECTED_DATASET_CACHE.cache_memory_bytes() as f64 / 1_048_576.0);
-    
-    profiling.mark("parquet batch count read");
+    let scanned = points.for_each_in_bbox(zoom, bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y, |x, y, value| {
+        let offset =
+            misc::coordinates_to_pixel_offset(&reprojected_bbox, (img_w, img_h), (x, y));
 
-    // Warm-cache path: if all reprojected batches are cached, skip parquet I/O entirely.
-    let resolved_batches: Vec<RecordBatch> =
-        match cached_batches(target_projection_code, &cache_key_base, num_batches) {
-            Some(batches) => {
-                profiling.mark("all batches cached - skipping parquet I/O");
-                batches
+        // Pixel-grid deduplication: skip if this pixel was already drawn
+        if offset.0 >= 0 && offset.0 < img_w as i32 && offset.1 >= 0 && offset.1 < img_h as i32 {
+            let grid_idx = offset.1 as usize * img_w as usize + offset.0 as usize;
+            if drawn_pixel_grid[grid_idx] {
+                return;
             }
-            None => {
-                // Tiles of the same layer and CRS share every batch. The gate sends one
-                // thread to the file and lets the rest read the cache after it.
-                let gate = DECODE_GATES.acquire(&cache_key_base);
-                let guard = cache_engine::lock_gate(&gate);
-
-                profiling.mark("decode gate acquired");
-
-                let result = match cached_batches(
-                    target_projection_code,
-                    &cache_key_base,
-                    num_batches,
-                ) {
-                    Some(batches) => {
-                        profiling.mark("batches cached by another request");
-                        Ok(batches)
-                    }
-                    None => decode_and_cache_batches(
-                        &layer_filepath,
-                        file,
-                        source_projection_code,
-                        target_projection_code,
-                        &cache_key_base,
-                        num_batches,
-                        profiling,
-                    ),
-                };
-
-                drop(guard);
-                DECODE_GATES.release(&cache_key_base, gate);
-
-                result?
-            }
-        };
-
-    // Draw all resolved batches
-    for (i, batch) in resolved_batches.into_iter().enumerate() {
-        let record_batch_name = format!("{}_{}", cache_key_base, i);
-
-        let latitude_column = batch
-            .column_by_name(LATITUDE_COLUMN)
-            .unwrap();
-        let latitude_casted_f64 = arrow::compute::cast_with_options(latitude_column, &arrow::datatypes::DataType::Float64, &CastOptions::default()).unwrap();
-        let latitude_column = latitude_casted_f64.as_primitive::<Float64Type>().clone();
-        let latitude_column = latitude_column.into_iter();
-
-        let longitude_column = batch
-            .column_by_name(LONGITUDE_COLUMN)
-            .unwrap();
-        let longitude_column_f64 = arrow::compute::cast_with_options(longitude_column, &arrow::datatypes::DataType::Float64, &CastOptions::default()).unwrap();
-        let longitude_column = longitude_column_f64.as_primitive::<Float64Type>().clone();
-        let longitude_column = longitude_column.into_iter();
-
-        let value_column = batch
-            .column_by_name(VALUE_COLUMN)
-            .unwrap();
-        let value_column_f64 = arrow::compute::cast_with_options(value_column, &arrow::datatypes::DataType::Float64, &CastOptions::default()).unwrap();
-        let value_column = value_column_f64.as_primitive::<Float64Type>().clone();
-
-
-        profiling.mark(&format!("done reading batch {}", record_batch_name));
-
-        let color_values: PrimitiveArray<UInt32Type> = value_column.unary(|x| {
-            // O(1) LUT lookup instead of per-value interpolation
-            let normalized = ((x - cm_min) / cm_range).clamp(0.0, 1.0);
-            let idx = (normalized * (lut_size - 1) as f64) as usize;
-            color_lut[idx]
-        });
-
-        profiling.mark(&format!("done colormapping batch {}", record_batch_name));
-
-        let color_values = color_values.into_iter();
-        let zipped_iterator = latitude_column.zip(longitude_column).zip(color_values);
-
-        profiling.mark(&format!("start drawing batch {}", record_batch_name));
-
-        for ((lat, lng), color) in zipped_iterator {
-            if lat.is_none() || lng.is_none() || color.is_none() {
-                continue;
-            }
-
-            let coordinates = (lng.unwrap(), lat.unwrap()); // X Y
-            let color = image_utils::unpack_rgba(color.unwrap());
-
-            // Fast inline bbox check using pre-computed bounds
-            let (x, y) = coordinates;
-            if x < bbox_min_x || x > bbox_max_x || y < bbox_min_y || y > bbox_max_y {
-                continue;
-            }
-
-            let offset = misc::coordinates_to_pixel_offset(
-                &reprojected_bbox,
-                (img_w, img_h),
-                coordinates,
-            );
-
-            // Pixel-grid deduplication: skip if this pixel was already drawn
-            if offset.0 >= 0 && offset.0 < img_w as i32 && offset.1 >= 0 && offset.1 < img_h as i32 {
-                let grid_idx = offset.1 as usize * img_w as usize + offset.0 as usize;
-                if drawn_pixel_grid[grid_idx] {
-                    continue;
-                }
-                drawn_pixel_grid[grid_idx] = true;
-                drawn_count += 1;
-            }
-
-            let draw_result: Result<(), MapError> = match icon_shape {
-                "circle" => draw_circle(image, offset, color, Some(point_radius)),
-                "circle_outlined" => draw_circle_outlined(image, offset, color, point_radius, Some((Rgba([0, 0, 0, 254]), 1))),
-                "square" => draw_square(image, offset, color, Some(point_radius)),
-                "square_outlined" => draw_square_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
-                "plus" => draw_plus(image, offset, color, Some(point_radius)),
-                "plus_outlined" => draw_plus_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
-                "triangle" => draw_triangle(image, offset, color, Some(point_radius)),
-                "triangle_outlined" => draw_triangle_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
-                _ => draw_circle(image, offset, color, Some(point_radius)),
-            };
-
-            if draw_result.is_err() {
-                log::error!("Could not draw image: {:?}", draw_result.err().unwrap());
-            }
+            drawn_pixel_grid[grid_idx] = true;
+            drawn_count += 1;
         }
 
-        profiling.mark(&format!("done drawing batch {}", record_batch_name));
-    }
+        // O(1) LUT lookup, on a point that survived the cull
+        let normalized = ((value - cm_min) / cm_range).clamp(0.0, 1.0);
+        let color = image_utils::unpack_rgba(color_lut[(normalized * (lut_size - 1) as f64) as usize]);
 
+        let draw_result: Result<(), MapError> = match icon_shape {
+            "circle" => draw_circle(image, offset, color, Some(point_radius)),
+            "circle_outlined" => draw_circle_outlined(image, offset, color, point_radius, Some((Rgba([0, 0, 0, 254]), 1))),
+            "square" => draw_square(image, offset, color, Some(point_radius)),
+            "square_outlined" => draw_square_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
+            "plus" => draw_plus(image, offset, color, Some(point_radius)),
+            "plus_outlined" => draw_plus_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
+            "triangle" => draw_triangle(image, offset, color, Some(point_radius)),
+            "triangle_outlined" => draw_triangle_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
+            _ => draw_circle(image, offset, color, Some(point_radius)),
+        };
+
+        if draw_result.is_err() {
+            log::error!("Could not draw image: {:?}", draw_result.err().unwrap());
+        }
+    });
+
+    profiling.mark("done drawing");
 
     // misc::print_bbox_on_image(&reprojected_bbox, image); //debugging
 
-    return Ok(drawn_count);
+    return Ok(DrawStats {
+        scanned,
+        drawn: drawn_count,
+    });
 }
 
-/// Every reprojected batch of a layer, or None when one of them is missing.
+/// Pyramid of a layer in one CRS, from the cache or freshly built.
 ///
-/// A single miss gives None, because Option collects that way. Zero batches give an
-/// empty vector, so an empty layer never reads the file.
-fn cached_batches(
-    target_projection_code: &str,
+/// Tiles of one screen share the pyramid. The gate sends one thread to the file and
+/// lets the rest read the cache after it. A waiter must check the cache again, because
+/// the entry can be evicted between the two reads.
+fn resolve_points(
     cache_key_base: &str,
-    num_batches: usize,
-) -> Option<Vec<RecordBatch>> {
-    (0..num_batches)
-        .map(|i| {
-            REPROJECTED_DATASET_CACHE.get_projection_applied_batch(
-                target_projection_code,
-                &format!("{}_{}", cache_key_base, i),
-            )
-        })
-        .collect()
-}
-
-/// Read the layer file, reproject every batch and put the results in the cache.
-///
-/// Call this under the decode gate of the same cache key.
-fn decode_and_cache_batches(
     layer_filepath: &str,
     file: File,
     source_projection_code: &str,
     target_projection_code: &str,
-    cache_key_base: &str,
-    num_batches: usize,
+    reprojected_bbox: &BoundingBox,
     profiling: &mut RequestProfiling,
-) -> Result<Vec<RecordBatch>, MapError> {
+) -> Result<Arc<LayerPoints>, MapError> {
+    if let Some(points) = POINT_INDEX_CACHE.get(cache_key_base) {
+        profiling.mark("point index cached");
+
+        return Ok(points);
+    }
+
+    let gate = DECODE_GATES.acquire(cache_key_base);
+    let guard = cache_engine::lock_gate(&gate);
+
+    profiling.mark("decode gate acquired");
+
+    let result = match POINT_INDEX_CACHE.get(cache_key_base) {
+        Some(points) => {
+            profiling.mark("point index built by another request");
+
+            Ok(points)
+        }
+        None => build_points(
+            layer_filepath,
+            file,
+            source_projection_code,
+            target_projection_code,
+            reprojected_bbox,
+            profiling,
+        )
+        .map(|points| {
+            let points = Arc::new(points);
+            POINT_INDEX_CACHE.insert(cache_key_base.to_string(), Arc::clone(&points));
+
+            log::info!(
+                "Point index cache now holds {:.0} MB",
+                POINT_INDEX_CACHE.bytes() as f64 / 1_048_576.0
+            );
+
+            points
+        }),
+    };
+
+    drop(guard);
+    DECODE_GATES.release(cache_key_base, gate);
+
+    result
+}
+
+/// Read the layer file, reproject every batch and build the pyramid.
+///
+/// Call this under the decode gate of the same cache key.
+fn build_points(
+    layer_filepath: &str,
+    file: File,
+    source_projection_code: &str,
+    target_projection_code: &str,
+    reprojected_bbox: &BoundingBox,
+    profiling: &mut RequestProfiling,
+) -> Result<LayerPoints, MapError> {
     // Drawing needs three columns. A projection skips the decode of every other column.
     let reader = data_utils::parquet_reader(
         layer_filepath,
@@ -289,17 +247,13 @@ fn decode_and_cache_batches(
 
     profiling.mark("parquet reader created");
 
-    let mut batches = Vec::with_capacity(num_batches);
+    let mut batches: Vec<RecordBatch> = Vec::new();
 
-    for (i, batch) in reader.enumerate() {
-        let record_batch_name = format!("{}_{}", cache_key_base, i);
-        profiling.mark(&format!("start reading batch {}", record_batch_name));
-
+    for batch in reader {
         let batch = match batch {
-            Ok(batch) => REPROJECTED_DATASET_CACHE.apply_projection_to_batch(
+            Ok(batch) => cache_engine::reproject_batch(
                 source_projection_code,
                 target_projection_code,
-                &record_batch_name,
                 batch,
             )?,
             Err(e) => {
@@ -308,11 +262,34 @@ fn decode_and_cache_batches(
             }
         };
 
-        profiling.mark(&format!("done reading batch {}", record_batch_name));
         batches.push(batch);
     }
 
-    Ok(batches)
+    profiling.mark("layer read and reprojected");
+
+    // The level grids follow the CRS extent, so a level cell equals a screen pixel.
+    let max_bounds = reprojected_bbox.get_max_bounds();
+    let world = (
+        max_bounds.get_min_x(),
+        max_bounds.get_min_y(),
+        max_bounds.get_max_x(),
+        max_bounds.get_max_y(),
+    );
+
+    let points = LayerPoints::build(&batches, world)?;
+
+    log::info!(
+        "Built point index for {} in {}: {} points, {} levels, {:.0} MB",
+        layer_filepath,
+        target_projection_code,
+        points.len(),
+        points.level_count(),
+        points.bytes() as f64 / 1_048_576.0,
+    );
+
+    profiling.mark("point index built");
+
+    Ok(points)
 }
 
 fn draw_pixel(image: &mut RgbaImage, x: i32, y: i32, color: Rgba<u8>) {

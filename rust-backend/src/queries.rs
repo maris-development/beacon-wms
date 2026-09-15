@@ -37,6 +37,41 @@ pub type DatasetMap = Arc<Mutex<HashMap<String, DatasetEntry>>>;
 /// Makes each temporary download file name unique.
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// A partial download. The drop removes the file, so no error path leaks a `.tmp`.
+struct TempFile {
+    path: String,
+    remove_on_drop: bool,
+}
+
+impl TempFile {
+    fn new(path: String) -> Self {
+        TempFile {
+            path,
+            remove_on_drop: true,
+        }
+    }
+
+    fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// Give up ownership after the rename put the file in place.
+    fn keep(&mut self) {
+        self.remove_on_drop = false;
+    }
+}
+
+impl Drop for TempFile {
+    fn drop(&mut self) {
+        if !self.remove_on_drop {
+            return;
+        }
+
+        // Drop cannot await, so this unlink is synchronous.
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 /// Get the dataset file for a layer.
 ///
 /// The function returns the file that is on disk. If that file is older than the
@@ -49,8 +84,6 @@ pub async fn get_dataset_file(
     layer_filepath: String,
     layer_config: LayerConfig,
 ) -> Result<(File, u64), String> {
-    let fetch_lock = get_fetch_lock(dataset_map, &layer_filepath).await;
-
     if let Some(result) = open_current(dataset_map, &layer_filepath).await {
         if stale_age(&layer_filepath).is_some() {
             refresh::enqueue(&layer_filepath, &layer_config).await;
@@ -60,14 +93,7 @@ pub async fn get_dataset_file(
     }
 
     // No file on disk. This caller must wait for the query.
-    let _guard = fetch_lock.lock().await;
-
-    // Another task can have fetched the file while this task waited for the lock.
-    if let Some(result) = open_current(dataset_map, &layer_filepath).await {
-        return result;
-    }
-
-    fetch_dataset(dataset_map, &layer_filepath, &layer_config).await?;
+    spawn_fetch(dataset_map, &layer_filepath, &layer_config).await?;
 
     match open_current(dataset_map, &layer_filepath).await {
         Some(result) => result,
@@ -75,6 +101,41 @@ pub async fn get_dataset_file(
             "Dataset file '{}' is missing after the query",
             &layer_filepath
         )),
+    }
+}
+
+/// Run the query in its own task and wait for the result.
+///
+/// The task owns the fetch lock and the query. A client that leaves drops this
+/// future and with it the join handle, but the task itself continues. A query of
+/// many minutes therefore survives a cancelled tile request, and the next request
+/// reads the finished file instead of a second query.
+async fn spawn_fetch(
+    dataset_map: &DatasetMap,
+    layer_filepath: &str,
+    layer_config: &LayerConfig,
+) -> Result<(), String> {
+    let fetch_lock = get_fetch_lock(dataset_map, layer_filepath).await;
+    let dataset_map = dataset_map.clone();
+    let layer_filepath = layer_filepath.to_string();
+    let layer_config = layer_config.clone();
+
+    let handle = tokio::spawn(async move {
+        let _guard = fetch_lock.lock().await;
+
+        // Another task can have fetched the file while this task waited for the lock.
+        if open_current(&dataset_map, &layer_filepath).await.is_some() {
+            return Ok(());
+        }
+
+        fetch_dataset(&dataset_map, &layer_filepath, &layer_config)
+            .await
+            .map(|_| ())
+    });
+
+    match handle.await {
+        Ok(result) => result,
+        Err(e) => Err(format!("Query task failed: {:?}", e)),
     }
 }
 
@@ -101,7 +162,7 @@ pub async fn fetch_dataset(
 
     log::info!("Updating layer at path: {:?}", layer_filepath);
 
-    let temp_filepath = temp_filepath_for(layer_filepath);
+    let mut temp_file = TempFile::new(temp_filepath_for(layer_filepath));
 
     let instance_url = &layer_config.config.instance_url;
     let auth_token = misc::get_env_var("BEACON_TOKEN", None);
@@ -110,16 +171,17 @@ pub async fn fetch_dataset(
         &query_str,
         instance_url,
         auth_token.as_str(),
-        &temp_filepath,
+        temp_file.path(),
     )
     .await;
 
     if let Err(e) = result {
-        let _ = tokio::fs::remove_file(&temp_filepath).await;
         return Err(format!("Error updating '{}': {:?}", layer_filepath, e));
     }
 
-    let generation = commit_dataset(dataset_map, &temp_filepath, layer_filepath).await?;
+    let generation = commit_dataset(dataset_map, temp_file.path(), layer_filepath).await?;
+
+    temp_file.keep();
 
     log::info!(
         "Layer updated: {:?}, generation is now {}",

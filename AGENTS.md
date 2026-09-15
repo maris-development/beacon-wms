@@ -165,8 +165,8 @@ Three cache levels exist. Know which one to clear.
 1. **Parquet layer cache** — `layers/{workspace}_{layer}_{viewparams_hash}.parquet`.
    A file older than `DATASET_TTL_SECONDS` still goes to the client. The refresh
    worker replaces it later. Clear with `/admin/clear-layers`.
-2. **Reprojected batch cache** — in memory LRU, 50000 entries.
-   See [cache_engine/mod.rs](rust-backend/src/cache_engine/mod.rs). Cleared on restart.
+2. **Point index cache** — in memory LRU with a byte budget, `POINT_INDEX_BUDGET_MB`.
+   See [point_index/mod.rs](rust-backend/src/point_index/mod.rs). Cleared on restart.
 3. **Tile cache** — `tile_cache/{first 2 hex chars}/{sha256}.png`. PNG only.
    Set `TILE_CACHE_ENABLED=true` to use it. Delete the directory to clear it.
 
@@ -192,12 +192,14 @@ The node proxy for `/admin/update` uses `http.request`, not `fetch`. The undici
 per layer file path. See [queries.rs](rust-backend/src/queries.rs).
 
 - The lock keeps concurrent cold misses to one query.
-- The generation counts the refreshes of that file. It is part of the reprojected
-  batch cache key, so a refreshed file never reuses the batches of the old file.
-  Old entries drop out of the LRU cache on their own.
+- The generation counts the refreshes of that file. It is part of the point index
+  cache key, so a refreshed file never reuses the pyramid of the old file. Old
+  entries drop out of the LRU cache on their own.
 
-The tile cache has no such key. A refreshed layer keeps its old PNG tiles until
-you delete the tile cache directory.
+The tile cache uses the file time instead. `TileValidator::build` in
+[tile_validator.rs](rust-backend/src/tile_validator.rs) hashes the modification time of
+every layer file into the tile key. A refresh renames a new file into place, so the time
+moves and the key changes. A refreshed layer therefore does **not** serve old tiles.
 
 ### Threading model
 
@@ -218,18 +220,39 @@ Resolve the dataset file with `queries::get_dataset_file` **before** you take a 
 That call can wait minutes for a datalake query. A pool thread must never hold a permit
 while it waits for the network.
 
-The pool threads share the reprojection cache. Its lock guards the cache only. Keep the
-reprojection itself outside the lock. Two threads can then reproject the same batch, and
-one of the two results is dropped. That waste costs far less than one lock over a loop of
-128k rows.
-
 `DECODE_GATES` in [map_drawing/mod.rs](rust-backend/src/map_drawing/mod.rs) covers the
-cold case instead. A browser opens a map with 6 to 12 tiles of one layer, and every tile
-needs the same batches. The gate lets one thread read the file and sends the rest to the
-cache after it. Key the gate on `cache_key_base`, the same key as the batch cache. A
+cold case. A browser opens a map with 6 to 12 tiles of one layer, and every tile needs
+the same pyramid. The gate lets one thread read the file and sends the rest to the cache
+after it. Key the gate on `cache_key_base`, the same key as the point index cache. A
 coarser key serializes two CRS for nothing, a finer key dedups nothing. A waiter must
 still check the cache again after the gate, because the LRU can evict. The gate mutex is
 a std mutex, because the draw path runs on the blocking pool.
+
+### Point index
+
+A tile must never scan the whole layer. `LayerPoints` in
+[point_index/mod.rs](rust-backend/src/point_index/mod.rs) holds one copy of the
+coordinates plus a level of detail pyramid over them. It is built once per layer file,
+generation and CRS, and it is the reason a 28 M row layer draws a tile in about 2 ms
+instead of 185 ms.
+
+Three properties carry the design. Do not break them.
+
+- **A level cell is one screen pixel of the zoom it serves.** The level grid follows the
+  CRS extent, so the cell lines up with the pixel grid of a standard tile. Take the span
+  from the **x** axis only. The reprojected y bounds are 0.06% wider, because proj clamps
+  latitude 90, and that drift alone moves a cell off its pixel.
+- **A level serves the zoom one step below it** (`LOD_LEVEL_MARGIN`). A cell is then half
+  a pixel and can never merge two points that land on different pixels. Without the
+  margin the draw loses about 7% of its points.
+- **A cell of the index grid must not be wider than a tile** of the zoom that the level
+  serves. Sizing the grid by point count alone leaves a cell far wider than a tile at
+  high zoom, and one query then scans the whole cell.
+
+Thinning keeps the **lowest row number** of each cell, which is the row that a full
+resolution draw would keep. The pyramid therefore draws the same points as an
+unindexed scan. Only the colour of an overlapped pixel can differ, because a different
+icon wins it.
 
 `misc::CoordinateTransform` resolves a projection pair once. Use it for a loop over many
 points. `misc::transform_coordinates` builds one per call, so it suits single points only.
@@ -250,6 +273,13 @@ cd node-backend && npm install && npm run dev
 ```
 
 Use `--release` for the rust backend. A debug build draws maps very slowly.
+
+Measure a draw change with the tile bench. It renders a 4K screen worth of tiles and
+reports the cost per tile and the points that the index handed to the draw loop.
+
+```bash
+cargo run --release --example tilebench -- ../layers/<file>.parquet 4.3 52.3 4,6,10,14
+```
 
 Visual test page: start a static server in [test/](test/) and open `index.html`.
 See [test/README.md](test/README.md).
@@ -275,6 +305,8 @@ The [README.md](README.md) holds the full table. The important ones:
 - `REFRESH_CONCURRENCY` — parallel refresh queries. Default is `1`.
 - `WORKERS` — async worker threads of the rust backend. Default is `4`.
 - `MAP_WORKERS` — parallel map renders. Default is the CPU count. See section 6.
+- `POINT_INDEX_BUDGET_MB` — memory for the point index cache. Default is `4096`. One
+  pyramid of a 28 M row layer takes about 1 GB per CRS.
 
 **Never commit `.env` and never print its content.** It holds a live token and the admin secret.
 
@@ -307,7 +339,8 @@ The [README.md](README.md) holds the full table. The important ones:
 | [refresh.rs](rust-backend/src/refresh.rs) | Refresh queue and the background worker. |
 | [beacon_api/mod.rs](rust-backend/src/beacon_api/mod.rs) | Posts the query, streams parquet to disk. |
 | [data_utils.rs](rust-backend/src/data_utils.rs) | Parquet reader helpers. Column projection. |
-| [cache_engine/mod.rs](rust-backend/src/cache_engine/mod.rs) | LRU cache of reprojected record batches. |
+| [cache_engine/mod.rs](rust-backend/src/cache_engine/mod.rs) | Batch reprojection and the decode gates. |
+| [point_index/mod.rs](rust-backend/src/point_index/mod.rs) | Level of detail pyramid and bbox index. Its cache. |
 | [map_drawing/mod.rs](rust-backend/src/map_drawing/mod.rs) | Point drawing. Shapes, radius per zoom, color LUT. |
 | [map_querying/](rust-backend/src/map_querying/) | GetFeatureInfo hit test and output formats. |
 | [color_maps/mod.rs](rust-backend/src/color_maps/mod.rs) | Colormap load, interpolation, LUT build. |

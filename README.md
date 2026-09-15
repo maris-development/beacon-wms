@@ -133,6 +133,7 @@ npm run dev
 | `CONFIG_DIR` | `../config` | Base directory for config files like `config.json` and `colormaps.json`. |
 | `CONFIG_FILE` | `config.json` | Main backend config file name (resolved under `CONFIG_DIR`). |
 | `LAYER_DIR` | `../layers` | Directory where generated layer parquet files are stored. |
+| `POINT_INDEX_BUDGET_MB` | `4096` | Memory for the point index cache. One 28 M row layer takes about 1 GB per CRS. |
 | `BEACON_TOKEN` | _(none)_ | Auth token used for Beacon API queries. |
 | `TILE_CACHE_ENABLED` | `false` | Enables tile image cache when set to `1`, `true`, `yes`, or `on`. |
 | `TILE_CACHE_DIR` | `../tile_cache` | Root directory for tile cache files. |
