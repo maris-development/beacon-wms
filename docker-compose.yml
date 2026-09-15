@@ -9,6 +9,9 @@ services:
       - HTTP_PORT=8000
       - WORKERS=${WORKERS:-4}
       - MAP_WORKERS=${MAP_WORKERS:-}
+      - MAP_QUEUE_TIMEOUT_SECONDS=${MAP_QUEUE_TIMEOUT_SECONDS:-30}
+      - MAP_RENDER_TIMEOUT_SECONDS=${MAP_RENDER_TIMEOUT_SECONDS:-120}
+      - PROFILE_MAPS=${PROFILE_MAPS:-false}
       - CONFIG_DIR=/app/config
       - CONFIG_FILE=${CONFIG_FILE:-config.json}
       - LAYER_DIR=/app/layers

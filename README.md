@@ -127,12 +127,16 @@ npm run dev
 | `HTTP_PORT` | `8000` | Rust backend HTTP port. |
 | `WORKERS` | `4` | Number of Tokio async worker threads. They run protocol and I/O work only. |
 | `MAP_WORKERS` | _(CPU cores)_ | Number of GetMap renders that run at the same time. |
+| `MAP_QUEUE_TIMEOUT_SECONDS` | `30` | Time a GetMap may wait for a render slot. The client gets 503 after it. `0` turns the limit off. |
+| `MAP_RENDER_TIMEOUT_SECONDS` | `120` | Time a GetMap may wait for its render. The client gets 503 after it. `0` turns the limit off. |
+| `PROFILE_MAPS` | `false` | Writes a timing report for every render. Use it to measure the cost per tile. |
 | `LABEL_FONT_PATH` | _(none)_ | TrueType font file for the legend labels. The backend searches the system fonts when it is empty. |
 | `LOG_DIR` | `../logs` | Directory for backend logs. |
 | `LOG_LEVEL` | `INFO` | Log verbosity (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`). |
 | `CONFIG_DIR` | `../config` | Base directory for config files like `config.json` and `colormaps.json`. |
 | `CONFIG_FILE` | `config.json` | Main backend config file name (resolved under `CONFIG_DIR`). |
 | `LAYER_DIR` | `../layers` | Directory where generated layer parquet files are stored. |
+| `POINT_INDEX_BUDGET_MB` | `4096` | Memory for the point index cache. One 28 M row layer takes about 1 GB per CRS. |
 | `BEACON_TOKEN` | _(none)_ | Auth token used for Beacon API queries. |
 | `TILE_CACHE_ENABLED` | `false` | Enables tile image cache when set to `1`, `true`, `yes`, or `on`. |
 | `TILE_CACHE_DIR` | `../tile_cache` | Root directory for tile cache files. |
@@ -156,6 +160,27 @@ for a refresh.
 
 Only a missing layer file makes a request wait for a Beacon query. Other requests
 for the same layer wait for that one query.
+
+## Request Cancellation
+
+A map client drops tile requests when the user zooms past a level. The node backend
+passes that abort on, so the Rust backend stops work that nobody reads.
+
+1. The browser closes the connection to the node backend.
+2. The node backend aborts its request to the Rust backend.
+3. Axum drops the handler future. The request leaves the render queue at once.
+4. The node backend logs the running total of dropped requests, one line per 25.
+
+Two parts of the work continue on purpose, because other requests need them:
+
+- A Beacon query runs in its own task. A cancelled tile never kills a query that
+  can take minutes.
+- A point index build runs under a decode gate. Other tiles of the same screen
+  wait for it.
+
+A render that already runs also continues, because a blocking thread cannot be
+stopped. It keeps its render slot until it ends, so the `MAP_WORKERS` limit holds.
+`MAP_RENDER_TIMEOUT_SECONDS` frees the client in that case.
 
 ### Manual Refresh
 

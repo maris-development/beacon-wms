@@ -6,35 +6,28 @@ use axum::{
     routing::get,
     Router,
 };
-use std::{collections::HashMap, fs, fs::File};
+use std::{
+    collections::HashMap,
+    fs,
+    fs::File,
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc,
+    },
+};
 use serde_json::Value;
 use tokio::runtime::Builder;
 use tokio::io::AsyncReadExt;
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, SemaphorePermit};
 
-use crate::{
+use rust_backend::{
     boundingbox::BoundingBox, color_maps::{ColorMap, ColorMapsConfig}, config::LayerConfig, map_querying::get_feature_info_collection::{Feature, GetFeatureInfoCollection}, queries::DatasetMap, query_parameters::{GetFeatureInfoRequestParameters, GetLegendGraphicRequestParameters, GetMapRequestParameters}, request_profiling::RequestProfiling, tile_cache::TileCache, tile_validator::TileValidator
 };
 
-pub mod tile_cache;
-pub mod tile_validator;
-pub mod beacon_api;
-pub mod boundingbox;
-pub mod cache_engine;
-pub mod color_maps;
-pub mod config;
-pub mod data_utils;
-pub mod errors;
-pub mod image_utils;
-pub mod legend;
-pub mod map_drawing;
-pub mod map_querying;
-pub mod misc;
-pub mod viewparams;
-pub mod queries;
-pub mod query_parameters;
-pub mod refresh;
-pub mod request_profiling;
+use rust_backend::{
+    color_maps, config, image_utils, legend, map_drawing, map_querying, misc, queries, refresh,
+    viewparams,
+};
 
 use lazy_static::lazy_static;
 
@@ -48,10 +41,7 @@ lazy_static! {
         TileCache::new(tile_cache_dir)
     };
 
-    pub static ref TILE_CACHE_ENABLED: bool = {
-        let enabled = misc::get_env_var("TILE_CACHE_ENABLED", Some("false"));
-        matches!(enabled.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
-    };
+    pub static ref TILE_CACHE_ENABLED: bool = misc::get_env_flag("TILE_CACHE_ENABLED", false);
 
     /// Number of map renders that run at the same time. Defaults to the CPU count.
     pub static ref MAP_WORKERS: usize = {
@@ -77,7 +67,19 @@ lazy_static! {
 
     /// Render slots for GetMap. Other routes take no slot, so GetMap cannot starve them.
     pub static ref MAP_RENDER_SLOTS: Semaphore = Semaphore::new(*MAP_WORKERS);
+
+    /// Writes a timing report for every render. Use it to measure the cost per tile.
+    pub static ref PROFILE_MAPS: bool = misc::map_profiling_enabled();
 }
+
+/// Renders that never started, because the client left while they sat in the queue.
+static RENDERS_ABANDONED: AtomicU64 = AtomicU64::new(0);
+
+/// Requests that waited too long for a render slot.
+static QUEUE_TIMEOUTS: AtomicU64 = AtomicU64::new(0);
+
+/// Renders that passed the render time limit.
+static RENDER_TIMEOUTS: AtomicU64 = AtomicU64::new(0);
 
 
 
@@ -401,7 +403,7 @@ async fn get_map(
         let max_value = layer_config.config.max_value.unwrap_or(100.0);
         let log_style = layer_config.config.log_style;
 
-        let color_map = match crate::color_maps::ColorMap::get_named(style, min_value, max_value, log_style)
+        let color_map = match color_maps::ColorMap::get_named(style, min_value, max_value, log_style)
         {
             Some(map) => map,
             None => {
@@ -430,12 +432,9 @@ async fn get_map(
     }
 
     // The dataset files are ready. Take a render slot only for the draw work itself.
-    let permit = match MAP_RENDER_SLOTS.acquire().await {
+    let permit = match acquire_render_slot().await {
         Ok(permit) => permit,
-        Err(e) => {
-            log::error!("Render slots closed: {}", e);
-            return (StatusCode::SERVICE_UNAVAILABLE, "Server shutting down").into_response();
-        }
+        Err(response) => return response,
     };
 
     profiling.mark("render slot acquired");
@@ -445,12 +444,47 @@ async fn get_map(
     let width = get_map_params.width;
     let height = get_map_params.height;
 
-    let render_result = tokio::task::spawn_blocking(move || {
-        render_png(draw_jobs, bbox, crs, width, height, profiling)
-    })
-    .await;
+    // A client that leaves drops this handler, and the guard then sets the flag. A
+    // render that still waits in the blocking queue reads the flag and stops.
+    let client_gone = CancelGuard::new();
+    let cancelled = client_gone.flag();
 
-    drop(permit);
+    // The permit goes with the render. A cancelled request therefore never frees a
+    // slot that the blocking pool still uses.
+    let render_task = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+
+        if cancelled.load(Ordering::Relaxed) {
+            let total = RENDERS_ABANDONED.fetch_add(1, Ordering::Relaxed) + 1;
+
+            log::info!("Client left before the render started ({} total)", total);
+
+            return Err(String::from("Client left before the render started"));
+        }
+
+        render_png(draw_jobs, bbox, crs, width, height, profiling)
+    });
+
+    // The blocking pool cannot stop a render that runs. The limit frees the client,
+    // and the render keeps its slot until it ends.
+    let render_result = match misc::get_map_render_timeout() {
+        Some(limit) => match tokio::time::timeout(limit, render_task).await {
+            Ok(joined) => joined,
+            Err(_) => {
+                let total = RENDER_TIMEOUTS.fetch_add(1, Ordering::Relaxed) + 1;
+
+                log::warn!(
+                    "Render of '{}' passed {}s ({} total). The client gets 503.",
+                    get_map_params.layers,
+                    limit.as_secs(),
+                    total
+                );
+
+                return busy_response(limit.as_secs());
+            }
+        },
+        None => render_task.await,
+    };
 
     let png_data = match render_result {
         Ok(Ok(png_data)) => png_data,
@@ -476,6 +510,70 @@ async fn get_map(
     }
 
     tile_response(png_data, &validator, false)
+}
+
+/// Tells a detached render that nobody waits for it any more.
+///
+/// Axum drops the handler future when the connection closes. The drop of this guard
+/// is the only signal the blocking pool gets, because a blocking task cannot abort.
+struct CancelGuard(Arc<AtomicBool>);
+
+impl CancelGuard {
+    fn new() -> Self {
+        CancelGuard(Arc::new(AtomicBool::new(false)))
+    }
+
+    fn flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.0)
+    }
+}
+
+impl Drop for CancelGuard {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Take a render slot, but give up when the queue stays full for too long.
+///
+/// A client that leaves drops this future, so its place in the queue goes at once.
+async fn acquire_render_slot() -> Result<SemaphorePermit<'static>, Response<axum::body::Body>> {
+    let slots: &'static Semaphore = &MAP_RENDER_SLOTS;
+    let acquire = slots.acquire();
+
+    let result = match misc::get_map_queue_timeout() {
+        Some(limit) => match tokio::time::timeout(limit, acquire).await {
+            Ok(result) => result,
+            Err(_) => {
+                let total = QUEUE_TIMEOUTS.fetch_add(1, Ordering::Relaxed) + 1;
+
+                log::warn!(
+                    "No render slot within {}s ({} total). The client gets 503.",
+                    limit.as_secs(),
+                    total
+                );
+
+                return Err(busy_response(limit.as_secs()));
+            }
+        },
+        None => acquire.await,
+    };
+
+    result.map_err(|e| {
+        log::error!("Render slots closed: {}", e);
+
+        (StatusCode::SERVICE_UNAVAILABLE, "Server shutting down").into_response()
+    })
+}
+
+/// The server has no room for this tile. The client may ask again.
+fn busy_response(retry_after_seconds: u64) -> Response<axum::body::Body> {
+    Response::builder()
+        .status(StatusCode::SERVICE_UNAVAILABLE)
+        .header("Retry-After", retry_after_seconds.to_string())
+        .header("Cache-Control", "no-store")
+        .body(axum::body::Body::from("The render queue is full. Try again."))
+        .unwrap()
 }
 
 /// A tile with its validators, so the next request can revalidate it.
@@ -567,7 +665,9 @@ fn render_png(
 
     profiling.mark("image encoded");
 
-    // profiling.log_report(); // --> get profiling report in logs
+    if *PROFILE_MAPS {
+        profiling.log_report();
+    }
 
     Ok(png_data)
 }
@@ -1010,7 +1110,7 @@ async fn get_legend_graphic(
     let max_value = layer_config.config.max_value.unwrap_or(100.0);
     let log_style = layer_config.config.log_style;
 
-    let color_map = match crate::color_maps::ColorMap::get_named(style, min_value, max_value, log_style) {
+    let color_map = match color_maps::ColorMap::get_named(style, min_value, max_value, log_style) {
         Some(map) => map,
         None => {
             return (
