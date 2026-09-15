@@ -105,6 +105,9 @@ pub fn get_map(
     let mut drawn_pixel_grid: Vec<bool> = vec![false; (img_w as usize) * (img_h as usize)];
     let mut drawn_count: usize = 0;
 
+    // Every point of this tile draws the same icon, so its runs are built once.
+    let icon_stamp = IconStamp::new(icon_shape, point_radius);
+
     // Shared color lookup table for O(1) color mapping
     let color_lut = color_map.lut();
     let lut_size = color_lut.len();
@@ -142,20 +145,21 @@ pub fn get_map(
         let normalized = ((value - cm_min) / cm_range).clamp(0.0, 1.0);
         let color = image_utils::unpack_rgba(color_lut[(normalized * (lut_size - 1) as f64) as usize]);
 
-        let draw_result: Result<(), MapError> = match icon_shape {
-            "circle" => draw_circle(image, offset, color, Some(point_radius)),
-            "circle_outlined" => draw_circle_outlined(image, offset, color, point_radius, Some((Rgba([0, 0, 0, 254]), 1))),
-            "square" => draw_square(image, offset, color, Some(point_radius)),
-            "square_outlined" => draw_square_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
-            "plus" => draw_plus(image, offset, color, Some(point_radius)),
-            "plus_outlined" => draw_plus_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
-            "triangle" => draw_triangle(image, offset, color, Some(point_radius)),
-            "triangle_outlined" => draw_triangle_outlined(image, offset, color, Some(point_radius), Some((Rgba([0, 0, 0, 254]), 1))),
-            _ => draw_circle(image, offset, color, Some(point_radius)),
-        };
+        match &icon_stamp {
+            Some(stamp) => stamp.draw(image, offset, color),
+            None => {
+                let result = draw_plus_outlined(
+                    image,
+                    offset,
+                    color,
+                    Some(point_radius),
+                    Some((OUTLINE_COLOR, OUTLINE_WIDTH)),
+                );
 
-        if draw_result.is_err() {
-            log::error!("Could not draw image: {:?}", draw_result.err().unwrap());
+                if let Err(e) = result {
+                    log::error!("Could not draw image: {:?}", e);
+                }
+            }
         }
     });
 
@@ -292,6 +296,180 @@ fn build_points(
     Ok(points)
 }
 
+/// Colour and width of the icon outline.
+const OUTLINE_COLOR: Rgba<u8> = Rgba([0, 0, 0, 254]);
+const OUTLINE_WIDTH: i32 = 1;
+
+/// One icon, as a pixel run per row.
+///
+/// Every point of a tile draws the same shape at the same radius, so the runs are built
+/// once. A run then replaces the distance test, the bounds check and the pixel call that
+/// a per pixel loop repeats for every pixel of every icon.
+struct IconStamp {
+    /// Row offset of the first entry. The rest follow in steps of one.
+    top: i32,
+    /// Half width of the fill run and of the outline run, per row. `-1` draws no run.
+    rows: Vec<(i32, i32)>,
+    outlined: bool,
+}
+
+impl IconStamp {
+    /// Runs of `shape` at `radius`. An unknown shape gives a circle.
+    ///
+    /// `None` means the shape has no run form. The caller draws it pixel by pixel.
+    fn new(shape: &str, radius: i32) -> Option<IconStamp> {
+        let stamp = match shape {
+            "circle_outlined" => IconStamp::disc(radius, OUTLINE_WIDTH),
+            "square" => IconStamp::square(radius, 0),
+            "square_outlined" => IconStamp::square(radius, OUTLINE_WIDTH),
+            "plus" => IconStamp::plus(radius),
+            "triangle" => IconStamp::triangle(radius, 0),
+            "triangle_outlined" => IconStamp::triangle(radius, OUTLINE_WIDTH),
+            "plus_outlined" => return None,
+            _ => IconStamp::disc(radius, 0),
+        };
+
+        Some(stamp)
+    }
+
+    /// Widest pixel offset of a disc of `radius` on row `dy`.
+    fn disc_half_width(radius: i32, dy: i32) -> i32 {
+        (radius * radius - dy * dy).isqrt()
+    }
+
+    /// The outline of a disc sits outside the radius.
+    fn disc(radius: i32, outline: i32) -> IconStamp {
+        let outer = radius + outline;
+
+        let rows = (-outer..=outer)
+            .map(|dy| {
+                let fill = if dy.abs() <= radius {
+                    IconStamp::disc_half_width(radius, dy)
+                } else {
+                    -1
+                };
+
+                (fill, IconStamp::disc_half_width(outer, dy))
+            })
+            .collect();
+
+        IconStamp { top: -outer, rows, outlined: outline > 0 }
+    }
+
+    /// The outline of a square sits inside the edge.
+    fn square(half: i32, outline: i32) -> IconStamp {
+        let inner = half - outline;
+
+        let rows = (-half..=half)
+            .map(|dy| (if dy.abs() <= inner { inner } else { -1 }, half))
+            .collect();
+
+        IconStamp { top: -half, rows, outlined: outline > 0 }
+    }
+
+    /// The outline of a triangle sits outside the edge.
+    fn triangle(half: i32, outline: i32) -> IconStamp {
+        let outer = half + outline;
+
+        let rows = (-outer..=outer)
+            .map(|dy| {
+                let fill = if dy.abs() <= half { (dy + half) / 2 } else { -1 };
+
+                (fill, (dy + outer) / 2)
+            })
+            .collect();
+
+        IconStamp { top: -outer, rows, outlined: outline > 0 }
+    }
+
+    /// A plus of arm length `half`. The bar carries the thickness of the arms.
+    fn plus(half: i32) -> IconStamp {
+        let bar = (half / 2).max(1) / 2;
+
+        let rows = (-half..=half)
+            .map(|dy| {
+                let fill = if dy.abs() <= bar { half } else { bar };
+
+                (fill, fill)
+            })
+            .collect();
+
+        IconStamp { top: -half, rows, outlined: false }
+    }
+
+    /// Draw the icon around `centre`. The outline goes first, so the fill covers it.
+    fn draw(&self, image: &mut RgbaImage, centre: (i32, i32), color: Rgba<u8>) {
+        let (cx, cy) = centre;
+
+        if self.outlined {
+            for (row, &(fill, outline)) in self.rows.iter().enumerate() {
+                let y = cy + self.top + row as i32;
+
+                if fill < 0 {
+                    draw_run(image, y, cx - outline, cx + outline, OUTLINE_COLOR);
+                    continue;
+                }
+
+                draw_run(image, y, cx - outline, cx - fill - 1, OUTLINE_COLOR);
+                draw_run(image, y, cx + fill + 1, cx + outline, OUTLINE_COLOR);
+            }
+        }
+
+        for (row, &(fill, _)) in self.rows.iter().enumerate() {
+            if fill < 0 {
+                continue;
+            }
+
+            draw_run(image, cy + self.top + row as i32, cx - fill, cx + fill, color);
+        }
+    }
+}
+
+/// Byte range of one clipped run, or `None` when the run misses the image.
+fn clip_run(image: &RgbaImage, y: i32, x0: i32, x1: i32) -> Option<(usize, usize)> {
+    let (width, height) = image.dimensions();
+
+    if y < 0 || y >= height as i32 {
+        return None;
+    }
+
+    let x0 = x0.max(0);
+    let x1 = x1.min(width as i32 - 1);
+
+    if x0 > x1 {
+        return None;
+    }
+
+    let start = (y as usize * width as usize + x0 as usize) * 4;
+
+    Some((start, start + (x1 - x0 + 1) as usize * 4))
+}
+
+/// Write one horizontal run under the rules of `draw_pixel`.
+///
+/// An opaque colour overwrites. A transparent one lands on empty pixels only.
+fn draw_run(image: &mut RgbaImage, y: i32, x0: i32, x1: i32, color: Rgba<u8>) {
+    let Some((start, end)) = clip_run(image, y, x0, x1) else {
+        return;
+    };
+
+    let buffer: &mut [u8] = image;
+
+    if color[3] == 255 {
+        for pixel in buffer[start..end].chunks_exact_mut(4) {
+            pixel.copy_from_slice(&color.0);
+        }
+
+        return;
+    }
+
+    for pixel in buffer[start..end].chunks_exact_mut(4) {
+        if pixel[3] == 0 {
+            pixel.copy_from_slice(&color.0);
+        }
+    }
+}
+
 fn draw_pixel(image: &mut RgbaImage, x: i32, y: i32, color: Rgba<u8>) {
     if !misc::inside_image(image, (x, y)) {
         return;
@@ -316,125 +494,9 @@ fn draw_pixel(image: &mut RgbaImage, x: i32, y: i32, color: Rgba<u8>) {
     }
 }
 
-fn draw_circle(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, radius: Option<i32>) -> Result<(), MapError> {
-    let radius = radius.unwrap_or(2);
-    let r_sq = radius * radius;
 
-    for x in -radius..=radius {
-        for y in -radius..=radius {
-            if x * x + y * y <= r_sq {
-                let px = point.0 + x;
-                let py = point.1 + y;
 
-                draw_pixel(image, px, py, color);
-            }
-        }
-    }
 
-    Ok(())
-}
-
-fn draw_circle_outlined(
-    image: &mut RgbaImage,
-    point: (i32, i32),
-    fill: Rgba<u8>,
-    radius: i32,
-    outline: Option<(Rgba<u8>, i32)>, // (colour, thickness)
-) -> Result<(), MapError> {
-
-    let r_sq = radius * radius;
-
-    // --- 1. outline pass (draw first, so fill sits on top) ---
-    if let Some((outline_color, thickness)) = outline {
-        let outer_r = radius + thickness;
-        let outer_r_sq = outer_r * outer_r;
-
-        for x in -outer_r..=outer_r {
-            for y in -outer_r..=outer_r {
-                let d = x * x + y * y;
-
-                if d <= outer_r_sq && d > r_sq {
-                    let px = point.0 + x;
-                    let py = point.1 + y;
-
-                    draw_pixel(image, px, py, outline_color);
-                }
-            }
-        }
-    }
-
-    // --- 2. fill pass ---
-    for x in -radius..=radius {
-        for y in -radius..=radius {
-            if x * x + y * y <= r_sq {
-                let px = point.0 + x;
-                let py = point.1 + y;
-
-                draw_pixel(image, px, py, fill);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn draw_square(
-    image: &mut RgbaImage,
-    point: (i32, i32),
-    color: Rgba<u8>,
-    half_size: Option<i32>,
-) -> Result<(), MapError> {
-
-    let half = half_size.unwrap_or(2);
-
-    for x in -half..=half {
-        for y in -half..=half {
-            let px = point.0 + x;
-            let py = point.1 + y;
-
-            draw_pixel(image, px, py, color);
-        }
-    }
-
-    Ok(())
-}
-
-fn draw_square_outlined(
-    image: &mut RgbaImage,
-    point: (i32, i32),
-    color: Rgba<u8>,
-    half_size: Option<i32>,
-    outline: Option<(Rgba<u8>, i32)>,
-) -> Result<(), MapError> {
-
-    let half = half_size.unwrap_or(2);
-
-    let (outline_color, thickness) = outline.unzip();
-
-    let t = thickness.unwrap_or(0);
-
-    for x in -half..=half {
-        for y in -half..=half {
-
-            let is_border =
-                t > 0 &&
-                (x.abs() > half - t || y.abs() > half - t);
-
-            let px = point.0 + x;
-            let py = point.1 + y;
-
-            let color_to_draw = if is_border {
-                outline_color.unwrap()
-            } else {
-                color
-            };
-
-            draw_pixel(image, px, py, color_to_draw);
-        }
-    }
-
-    Ok(())
-}
 
 //  fn draw_plus(image: &mut RgbaImage, point: (i32, i32), color: Rgba<u8>, half_size: Option<i32>) -> Result<(), MapError> {
 
@@ -473,37 +535,6 @@ fn draw_square_outlined(
 //     Ok(())
 // }
 
-fn draw_plus(
-    image: &mut RgbaImage,
-    point: (i32, i32),
-    color: Rgba<u8>,
-    half_size: Option<i32>,
-) -> Result<(), MapError> {
-
-    let half = half_size.unwrap_or(2);
-    let thickness = (half / 2).max(1);
-
-    for i in -half..=half {
-
-        // horizontal bar
-        for t in -(thickness / 2)..=(thickness / 2) {
-            let px = point.0 + i;
-            let py = point.1 + t;
-
-            draw_pixel(image, px, py, color);
-        }
-
-        // vertical bar
-        for t in -(thickness / 2)..=(thickness / 2) {
-            let px = point.0 + t;
-            let py = point.1 + i;
-
-            draw_pixel(image, px, py, color);
-        }
-    }
-
-    Ok(())
-}
 
 fn draw_plus_outlined(
     image: &mut RgbaImage,
@@ -570,93 +601,7 @@ fn draw_plus_outlined(
 //     Ok(())
 // }
 
-fn draw_triangle(
-    image: &mut RgbaImage,
-    point: (i32, i32),
-    color: Rgba<u8>,
-    half_size: Option<i32>,
-) -> Result<(), MapError> {
 
-    let half = half_size.unwrap_or(2);
-
-    for y_offset in -half..=half {
-
-        let max_x_width = (y_offset + half) / 2;
-
-        for x_offset in -max_x_width..=max_x_width {
-
-            let px = point.0 + x_offset;
-            let py = point.1 + y_offset;
-
-            draw_pixel(image, px, py, color);
-        }
-    }
-
-    Ok(())
-}
-
-fn draw_triangle_outlined(
-    image: &mut RgbaImage,
-    point: (i32, i32),
-    fill: Rgba<u8>,
-    half_size: Option<i32>,
-    outline: Option<(Rgba<u8>, i32)>,
-) -> Result<(), MapError> {
-
-    let half = half_size.unwrap_or(2);
-
-    let (outline_color, t) = if let Some(o) = outline {
-        o
-    } else {
-        (Rgba([0, 0, 0, 0]), 0) // dummy
-    };
-
-    let outer = half + t;
-
-    // --- OUTLINE PASS ---
-    if t > 0 {
-        for y in -outer..=outer {
-
-            let outer_max_x = (y + outer) / 2;
-            let inner_max_x = (y.abs() <= half).then(|| (y + half) / 2);
-
-            for x in -outer_max_x..=outer_max_x {
-
-                // OUTSIDE inner triangle but inside outer triangle
-                let in_outer =
-                    x.abs() <= outer_max_x;
-
-                let in_inner = if let Some(ix) = inner_max_x {
-                    x.abs() <= ix
-                } else {
-                    false
-                };
-
-                if in_outer && !in_inner {
-                    let px = point.0 + x;
-                    let py = point.1 + y;
-
-                    draw_pixel(image, px, py, outline_color);
-                }
-            }
-        }
-    }
-
-    // --- FILL PASS ---
-    for y in -half..=half {
-
-        let max_x = (y + half) / 2;
-
-        for x in -max_x..=max_x {
-            let px = point.0 + x;
-            let py = point.1 + y;
-
-            draw_pixel(image, px, py, fill);
-        }
-    }
-
-    Ok(())
-}
 
 
 
