@@ -41,10 +41,7 @@ lazy_static! {
         TileCache::new(tile_cache_dir)
     };
 
-    pub static ref TILE_CACHE_ENABLED: bool = {
-        let enabled = misc::get_env_var("TILE_CACHE_ENABLED", Some("false"));
-        matches!(enabled.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
-    };
+    pub static ref TILE_CACHE_ENABLED: bool = misc::get_env_flag("TILE_CACHE_ENABLED", false);
 
     /// Number of map renders that run at the same time. Defaults to the CPU count.
     pub static ref MAP_WORKERS: usize = {

@@ -28,6 +28,39 @@ export class BeaconWmsService {
     // Default lifetime of a tile in a client cache, in seconds.
     private static DEFAULT_CACHE_MAX_AGE = 3600;
 
+    // GetMap requests that the client dropped, since the process started.
+    private static abortedTileRequests = 0;
+
+    // One log line per this many aborts. A zoom storm drops many tiles at once.
+    private static ABORT_LOG_INTERVAL = 25;
+
+    /**
+     * Stop the backend request when the client goes away.
+     *
+     * A map client drops a tile request when the user zooms past a level. Without
+     * this signal the abort stops here, and the Rust backend still renders a tile
+     * that nobody reads.
+     */
+    private static abortSignalFor(res: Response): AbortSignal {
+        const controller = new AbortController();
+
+        res.on("close", () => {
+            if (res.writableEnded) {
+                return;
+            }
+
+            controller.abort();
+
+            BeaconWmsService.abortedTileRequests += 1;
+
+            if (BeaconWmsService.abortedTileRequests % BeaconWmsService.ABORT_LOG_INTERVAL === 0) {
+                logger.info(`Clients dropped ${BeaconWmsService.abortedTileRequests} GetMap requests`);
+            }
+        });
+
+        return controller.signal;
+    }
+
     /**
      * Cache policy for a tile.
      *
@@ -272,7 +305,10 @@ export class BeaconWmsService {
         if (wmsGetMapParams.viewparams) url.searchParams.append("viewparams", wmsGetMapParams.viewparams);
 
 
-        fetch(url, { headers: BeaconWmsService.validationRequestHeaders(req) })
+        fetch(url, {
+            headers: BeaconWmsService.validationRequestHeaders(req),
+            signal: BeaconWmsService.abortSignalFor(res)
+        })
             .then(r => {
                 // The tile did not change. The Rust backend sends no body.
                 if (r.status === 304) {
@@ -316,6 +352,11 @@ export class BeaconWmsService {
                 res.end(nodeBuf);
             })
             .catch(response => {
+                // The client is gone, so there is nobody to answer.
+                if (response?.name === "AbortError") {
+                    return;
+                }
+
                 try{
                     response.text().then((text: string) => logger.error(text));
                 } catch(_){

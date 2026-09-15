@@ -801,9 +801,9 @@ pub fn get_refresh_concurrency() -> usize {
     value as usize
 }
 
-/// Time a GetMap may wait for a render slot. Zero turns the limit off. Default is 20s.
+/// Time a GetMap may wait for a render slot. Zero turns the limit off. Default is 30s.
 pub fn get_map_queue_timeout() -> Option<Duration> {
-    let seconds = get_env_number("MAP_QUEUE_TIMEOUT_SECONDS", 20);
+    let seconds = get_env_number("MAP_QUEUE_TIMEOUT_SECONDS", 30);
 
     match seconds {
         0 => None,
@@ -811,9 +811,12 @@ pub fn get_map_queue_timeout() -> Option<Duration> {
     }
 }
 
-/// Time a GetMap may wait for its render. Zero turns the limit off. Default is 60s.
+/// Time a GetMap may wait for its render. Zero turns the limit off. Default is 120s.
+///
+/// The first tile of a big layer also builds the point index, so the default leaves
+/// room for that build.
 pub fn get_map_render_timeout() -> Option<Duration> {
-    let seconds = get_env_number("MAP_RENDER_TIMEOUT_SECONDS", 60);
+    let seconds = get_env_number("MAP_RENDER_TIMEOUT_SECONDS", 120);
 
     match seconds {
         0 => None,

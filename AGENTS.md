@@ -212,9 +212,13 @@ The rust backend keeps two thread groups apart. Do not mix them.
   draw and PNG work. `render_png` and `query_features` in
   [main.rs](rust-backend/src/main.rs) are the only entry points.
 
-`MAP_RENDER_SLOTS` is a semaphore with `MAP_WORKERS` permits. GetMap takes a permit
-around the render call. GetFeatureInfo takes no permit, so a burst of GetMap requests
-cannot delay it.
+`MAP_RENDER_SLOTS` is a semaphore with `MAP_WORKERS` permits. GetFeatureInfo takes no
+permit, so a burst of GetMap requests cannot delay it.
+
+**The GetMap permit moves into the `spawn_blocking` closure.** It must not stay in the
+handler. Axum drops the handler future when the client goes away, but a blocking task
+cannot be aborted and runs on. A permit in the handler therefore frees a slot that the
+pool still uses, and the render count passes `MAP_WORKERS`.
 
 Resolve the dataset file with `queries::get_dataset_file` **before** you take a permit.
 That call can wait minutes for a datalake query. A pool thread must never hold a permit
@@ -227,6 +231,26 @@ after it. Key the gate on `cache_key_base`, the same key as the point index cach
 coarser key serializes two CRS for nothing, a finer key dedups nothing. A waiter must
 still check the cache again after the gate, because the LRU can evict. The gate mutex is
 a std mutex, because the draw path runs on the blocking pool.
+
+### Request cancellation
+
+The node backend passes the client abort on with an `AbortSignal`. Without it the abort
+stops in Express and the rust backend renders a tile that nobody reads.
+
+Axum then drops the handler future, so every `.await` becomes a cancellation point. That
+covers the wait for a render slot, which is the part that matters under a zoom storm.
+
+Two blocks of work must survive a cancelled request, because other requests need them:
+
+- **The datalake query.** `queries::spawn_fetch` runs it in its own task and waits for
+  the join handle. A dropped handle detaches the task, so the query finishes. Never
+  inline that query back into the handler: a cancelled tile would then kill a query of
+  many minutes and leave the next caller to start it again.
+- **The point index build.** It runs under `DECODE_GATES`. Other tiles of the same
+  screen wait for it.
+
+A render that already runs also continues. It has no cancellation checks inside the draw
+loops. `MAP_RENDER_TIMEOUT_SECONDS` frees the client, not the thread.
 
 ### Point index
 
@@ -305,6 +329,9 @@ The [README.md](README.md) holds the full table. The important ones:
 - `REFRESH_CONCURRENCY` — parallel refresh queries. Default is `1`.
 - `WORKERS` — async worker threads of the rust backend. Default is `4`.
 - `MAP_WORKERS` — parallel map renders. Default is the CPU count. See section 6.
+- `MAP_QUEUE_TIMEOUT_SECONDS` — wait limit for a render slot. Default is `30`. `0` is off.
+- `MAP_RENDER_TIMEOUT_SECONDS` — wait limit for a render. Default is `120`. `0` is off.
+- `PROFILE_MAPS` — writes a timing report per render. Use it to measure the cost per tile.
 - `POINT_INDEX_BUDGET_MB` — memory for the point index cache. Default is `4096`. One
   pyramid of a 28 M row layer takes about 1 GB per CRS.
 
