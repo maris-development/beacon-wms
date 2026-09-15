@@ -42,6 +42,15 @@ body {
     opacity: 0.75;
 }
 
+#toolbar .version {
+    font-family: var(--font-mono);
+    opacity: 0.6;
+}
+
+#toolbar .version:hover {
+    opacity: 1;
+}
+
 #container {
     display: flex;
     flex: 1;

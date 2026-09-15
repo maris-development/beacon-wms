@@ -40,6 +40,10 @@
         <a :href="`${workspace?.wmsUrl}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities`"
             target="_blank">GetCapabilities</a>
         <a href="./admin">Admin</a>
+
+        <a class="version" x-show="version?.commitUrl" :href="version?.commitUrl" target="_blank"
+            :title="`commit ${version?.commit}, branch ${version?.branch}, built ${version?.builtAt}`"
+            x-text="version?.shortCommit"></a>
     </div>
 
     <div id="container">

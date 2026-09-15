@@ -1,6 +1,6 @@
 import Alpine from "../vendor/alpine/module.esm.js";
 import { BASE_LAYER, START_VIEW, WMS_VERSION, FEATURE_COUNT, INPUT_DELAY_MS } from "./config.js";
-import { getWorkspaces, getCapabilities } from "./api.js";
+import { getWorkspaces, getCapabilities, getVersion } from "./api.js";
 import { readLayers } from "./capabilities.js";
 
 // Leaflet objects stay out of the Alpine data. Alpine wraps its data in proxies, and
@@ -25,10 +25,21 @@ function preview() {
         clickCoords: "",
         features: null,
         featureError: "",
+        version: null,
 
         async init() {
             this.createMap();
+            this.loadVersion();
             await this.loadWorkspaces();
+        },
+
+        /// The version is extra information, so a failure stays silent.
+        async loadVersion() {
+            try {
+                this.version = await getVersion();
+            } catch {
+                this.version = null;
+            }
         },
 
         createMap() {

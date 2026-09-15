@@ -28,6 +28,41 @@ The page gives you:
 - the legend of each visible layer;
 - feature info. Turn on "Query features on click", then click the map.
 
+### Version
+
+`/version` reports the commit of the running code as JSON.
+
+```json
+{
+  "commit": "8c0d6e9...",
+  "shortCommit": "8c0d6e9",
+  "branch": "main",
+  "builtAt": "unknown",
+  "commitUrl": "https://github.com/maris-development/beacon-wms/tree/8c0d6e9...",
+  "source": "git"
+}
+```
+
+`commitUrl` points at the commit on GitHub. It is empty when the commit is unknown.
+`GIT_REPO_URL` changes the base URL.
+
+The map preview shows the short commit at the right of the toolbar. It links to
+`commitUrl`. Point at it for the full hash, the branch and the build time.
+
+`source` tells you where the value comes from:
+
+- `build` — the build baked it in through `GIT_COMMIT`. This is the commit of the image.
+- `git` — the service read the mounted `.git` directory. This is the commit of the
+  working copy on the host. A `git pull` without a rebuild changes it, and the container
+  then reports a commit that is newer than its code. Restart the stack after a pull.
+- `unknown` — no build argument and no git directory.
+
+To bake the commit into the image, set the build arguments:
+
+```bash
+GIT_COMMIT=$(git rev-parse HEAD) GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)   BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) docker compose up -d --build
+```
+
 ### Admin page
 
 `/admin` holds the admin controls. The page asks for the admin secret first. See
@@ -101,6 +136,9 @@ To build and run both backends using Docker:
 ```bash
 docker compose up --build
 ```
+
+`/version` then reports the commit from the mounted `.git` directory. See
+[Version](#version) to bake the commit into the image instead.
 
 ### Development (Local)
 
@@ -233,6 +271,11 @@ The [admin page](#admin-page) at `/admin` runs the same calls from the browser. 
 | `HTTP_PROTOCOL` | Request protocol | Protocol used in generated capabilities URLs. |
 | `ADMIN_SECRET` | _(empty)_ | Bcrypt hash of the admin secret. Admin endpoints need it (must be set to enable). Plaintext still works and logs a warning. |
 | `WMS_CACHE_MAX_AGE` | `3600` | Seconds a client may reuse a GetMap tile before it revalidates. |
+| `GIT_COMMIT` | _(empty)_ | Commit that `/version` reports. The build sets it. |
+| `GIT_BRANCH` | _(empty)_ | Branch that `/version` reports. The build sets it. |
+| `BUILD_TIME` | _(empty)_ | Build timestamp that `/version` reports. The build sets it. |
+| `GIT_DIR` | `/repo/.git` | Git directory that `/version` reads when `GIT_COMMIT` is empty. |
+| `GIT_REPO_URL` | `https://github.com/maris-development/beacon-wms` | Base URL of the `commitUrl` link. |
 
 
 

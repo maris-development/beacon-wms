@@ -7,6 +7,7 @@ import { AdminService } from "./service/admin";
 import { AdminSecret } from "./service/admin-secret";
 import { WorkspaceConfig } from "./types/config";
 import logger from "./service/logger";
+import { Version } from "./service/version";
 
 const config = new Config();
 const wmsService: BeaconWmsService = new BeaconWmsService(config);
@@ -16,6 +17,7 @@ const adminService: AdminService = new AdminService();
 config.load(); // async Load config at startup
 
 AdminSecret.reportFormat();
+Version.report();
 
 const http_address = process.env.HTTP_ADDRESS || "0.0.0.0";
 const http_port: number = parseInt(process.env.HTTP_PORT || '3000');
@@ -50,6 +52,7 @@ app.use(path_prefix || "/", express.static(public_dir));
 
 app.use(appMiddleware)
 app.get(routes.workspaces.getRoute(), workspaces);
+app.get(routes.version.getRoute(), version);
 app.get(routes.defaultWms.getRoute(), defaultWms);
 app.get(routes.workspaceWms.getRoute(), workspaceWms);
 app.get(routes.adminPage.getRoute(), adminPage);
@@ -87,6 +90,11 @@ async function workspaces(req: Request, res: Response) {
         server: await config.getServerConfig() ?? {},
         workspaces: list
     });
+}
+
+/// Report the commit that the running code comes from.
+function version(req: Request, res: Response) {
+    res.json(Version.get());
 }
 
 function adminPage(req: Request, res: Response) {

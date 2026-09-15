@@ -28,5 +28,13 @@ COPY --from=builder /app/templates ./templates
 COPY --from=builder /app/public ./public
 
 
+# Commit of the source. Compose passes it, the app serves it on /version.
+ARG GIT_COMMIT=
+ARG GIT_BRANCH=
+ARG BUILD_TIME=
+ENV GIT_COMMIT=$GIT_COMMIT
+ENV GIT_BRANCH=$GIT_BRANCH
+ENV BUILD_TIME=$BUILD_TIME
+
 # Run app
 CMD ["node", "dist/index.js"]

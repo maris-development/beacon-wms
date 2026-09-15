@@ -33,6 +33,10 @@ services:
   node-backend:
     build:
       context: ./node-backend
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-}
+        - GIT_BRANCH=${GIT_BRANCH:-}
+        - BUILD_TIME=${BUILD_TIME:-}
     ports:
       - "${HOST_HTTP_PORT:-3000}:3000"
     environment:
@@ -50,6 +54,8 @@ services:
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
+      # /version reads the commit here when the build args are empty.
+      - ./.git:/repo/.git:ro
     depends_on:
       - rust-backend
     restart: unless-stopped

@@ -53,3 +53,14 @@ export function adminFetch(path, secret) {
         headers: { Authorization: `Bearer ${secret}` },
     });
 }
+
+/// Read the commit that the backend runs.
+export async function getVersion() {
+    const response = await fetch(apiUrl("version"));
+
+    if (!response.ok) {
+        throw new Error(`The version call failed with status ${response.status}`);
+    }
+
+    return response.json();
+}

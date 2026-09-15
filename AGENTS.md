@@ -45,6 +45,7 @@ Defined in [routes.ts](node-backend/src/service/routes.ts). `PATH_PREFIX` goes b
 | --- | --- |
 | `/` | Leaflet map preview. Static `public/index.html`. |
 | `/workspaces` | JSON workspace list plus the server block. Fills the workspace select. |
+| `/version` | JSON commit of the running code. The preview toolbar shows the short hash. |
 | `/wms` | WMS endpoint of the default workspace. |
 | `/workspaces/:workspaceId/wms` | WMS endpoint of one workspace. |
 | `/admin` | Admin page. Static `public/admin.html`. |
@@ -55,6 +56,15 @@ Defined in [routes.ts](node-backend/src/service/routes.ts). `PATH_PREFIX` goes b
 
 The WMS endpoint supports `GetCapabilities`, `GetMap`, `GetFeatureInfo` and `GetLegendGraphic`.
 WMS versions `1.3.0` and `1.1.1` are accepted.
+
+### Version
+
+[version.ts](node-backend/src/service/version.ts) reports the commit. The build context is
+`./node-backend`, so `.git` is out of reach at build time. Compose mounts it at
+`/repo/.git:ro` instead, and the service parses `HEAD`, the loose ref and `packed-refs`
+without the git binary. A clone keeps most refs in `packed-refs`, so both paths are needed.
+`GIT_COMMIT` from the build arguments wins over the mount. The value is read once at
+startup, so a `git pull` shows up only after a restart.
 
 ### Static pages
 
